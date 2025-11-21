@@ -126,23 +126,24 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
         _ = self.view
         
         if (!RegistrationState.shared.isRegistrationInProgress){
-            logger.log("webloginlog: viewDidAppear called.")
+            logger.debug("webloginlog: viewDidAppear called.")
             if let url = url {
-                logger.log("webloginlog: viewDidAppear. The url is: \(url.absoluteString)")
+                logger.debug("webloginlog: viewDidAppear. The url is: \(url.absoluteString)")
                 webView.navigationDelegate=self
                 var request = URLRequest(url: url)
                 let cookies = getCookies()
                 
-                if let cookies = cookies {
-                    logger.log("webloginlog: Cookies are saved.")
-                    request.setValue(self.combineCookies(cookies: cookies), forHTTPHeaderField: "Cookie")
+                // We don't handle cookies anymore
+              //  if let cookies = cookies {
+                   // logger.log("webloginlog: Cookies are saved.")
+                  //  request.setValue(self.combineCookies(cookies: cookies), forHTTPHeaderField: "Cookie")
                     
-                }
+                //    }
                 if let signedRefreshToken {
-                    logger.log("webloginlog: Signed token being sent to Keycloak")
+                    logger.debug("webloginlog: Signed token being sent to Keycloak")
                     request.setValue("Bearer \(signedRefreshToken)", forHTTPHeaderField: "Platform-SSO-Authorization")
                 }
-                request.httpShouldHandleCookies=true
+                //request.httpShouldHandleCookies=true
             
                 webView.configuration.allowsInlinePredictions = true
                 webView.load(request)
@@ -184,10 +185,24 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         logger.debug("webloginlog: Request absolute string \(request.url.absoluteURL.absoluteString)")
         for authorizationURL in authorizationURLs {
             
-            logger.debug("webloginlog: checking authorization url: \(authorizationURL)")
+            logger.info("webloginlog: checking authorization url: \(authorizationURL)")
             if request.url.absoluteURL.absoluteString.starts(with: authorizationURL) {
                 logger.debug("webloginlog: beginning authorization url: \(authorizationURL)")
+                
+                /*
+                if let components = URLComponents(url: request.url.absoluteURL, resolvingAgainstBaseURL: false),
+                   let kc_action = components.queryItems?.first(where: { $0.name == "kc_action" })?.value {
+                    logger.log("webloginlog: has kc_action: \(kc_action). Skipping auth.")
+                    break
+                    
+                }
+                 */
+                 
+                 
                 startAuthorization = true
+                
+                
+                
                 self.isDeviceRegistrationFlow = false
                 break
             }
@@ -195,7 +210,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         }
         
         if (!startAuthorization) {
-            authorizationRequest?.complete(error: ASAuthorizationError(.canceled))
+            authorizationRequest?.doNotHandle()
             return
         }
         
@@ -213,6 +228,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         if let loginManager = loginManager {
             if (loginManager.isDeviceRegistered && loginManager.isUserRegistered)
             {
+                
+                
+                
                 if let value = tokens?[AnyHashable("refresh_token")] as? String {
                     if let refreshToken = loginManager.ssoTokens?["refresh_token"]{
                         let signedToken = signToken(token: refreshToken as! String, loginManager: loginManager)
@@ -275,7 +293,6 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             return nil
         }
         
-        logger.log("webloginlog: The username is \(username)")
         let envelope: [String: Any] = [
             "refresh_token": token,
             "kid": signKeyId,
@@ -314,7 +331,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             decisionHandler(.allow)
             return
         }
-        logger.log("webloginlog: Entering decision policy for: \(webViewURL.absoluteString)")
+        logger.debug("webloginlog: Entering decision policy for: \(webViewURL.absoluteString)")
         
         // Handle required actions in Keycloak
         
@@ -322,10 +339,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         let loginActionUrl = "\(self.baseURL)/login-actions/"
         
         if (RegistrationState.shared.isRegistrationInProgress){
-            logger.log( "webloginlog: Registration login flow.")
+            logger.debug( "webloginlog: Registration login flow.")
 
             if webViewURL.absoluteString.starts(with: "weblogin-sso://idp-login-redirect"){
-                logger.log( "webloginlog: Login successful. URL: \(webViewURL.absoluteString)")
+                logger.debug( "webloginlog: Login successful. URL: \(webViewURL.absoluteString)")
                 var hasCode = false
                 if let components = URLComponents(url: webViewURL, resolvingAgainstBaseURL: false)  {
                     let code =  components.queryItems?.first(where: { $0.name == "code" })?.value
@@ -467,33 +484,29 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         let code =  components?.queryItems?.first(where: { $0.name == "code" })?.value
         
         // needs fixing
-        if (webViewURL.absoluteString.starts(with: kCallbackURLString) || webViewURL.absoluteString.starts(with: requiredActionUrl)) {
+        if webViewURL.absoluteString.starts(with: kCallbackURLString)  {
        
         logger.debug("webloginlog: Intercepted callback redirect: \(webViewURL.absoluteString)")
 
             // Stop navigation
            
             logger.debug("webloginlog: Handling it as OIDC")
-            if webViewURL.absoluteString.starts(with: loginActionUrl){
-                decisionHandler(.allow)
-            }
-            else {
-                decisionHandler(.cancel)
-            }
+            decisionHandler(.cancel)
+            
+     
+            
             // Extract cookies
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+               
                 let headers: [String:String] = [
                     "Location": webViewURL.absoluteString,
                     "Set-Cookie": self.combineCookies(cookies: cookies)
                 ]
                 
-                
-                self.storeCookies(cookies)
-                
-                     
+           
                     if let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil, headerFields: headers) {
                         
-                        logger.log("webloginlog: Sending redirect response to browser from intercepted: \(webViewURL.absoluteString)")
+                        logger.debug("webloginlog: Sending redirect response to browser from intercepted: \(webViewURL.absoluteString)")
                         self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
                     } else {
                         logger.error("webloginlog: Failed to construct HTTPURLResponse for oidc.")
@@ -525,13 +538,17 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
  
         if (webViewURL.absoluteString.starts(with: (kCallbackURLString))) {
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies({ cookies in
+                
                 let headers: [String:String] = [
                     "Location": webViewURL.absoluteString,
                     "Set-Cookie": self.combineCookies(cookies: cookies)
                 ]
+                 
+                    // webView.configuration.websiteDataStore.
+              // let headers: [String:String] = [:]
              
                
-                self.storeCookies(cookies)
+         //       self.storeCookies(cookies)
                
                     if let response = HTTPURLResponse.init(url: url, statusCode: 303, httpVersion: nil, headerFields: headers) {
                         logger.debug("webloginlog: we send the redirect to the browser: \(url.absoluteString)")
@@ -801,7 +818,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                                  completion: @escaping
                                  (ASAuthorizationProviderExtensionRegistrationResult) ->
                                  Void) {
-        logger.log("webloginlog: beginDeviceRegistration")
+        logger.debug("webloginlog: beginDeviceRegistration")
         RegistrationState.shared.loginManager = loginManager
         RegistrationState.shared.registrationCompletion = completion
         RegistrationState.shared.isRegistrationInProgress = true
@@ -839,7 +856,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     }
         
     func idpLogin() {
-        logger.log("webloginlog: Starting IdP login")
+        logger.debug("webloginlog: Starting IdP login")
 
         guard let baseURL = self.mdmConfig?.baseURL,
               let clientID = self.mdmConfig?.clientID else {
@@ -1107,7 +1124,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 return data.base64EncodedString(options: [])
             }
             
-            logger.log("webloginlog: user attestation: \(attestationB64)")
+            logger.debug("webloginlog: user attestation: \(attestationB64)")
             guard let baseURL else {
                 logger.error("webloginlog: No baseURL found on SSO Extension profile from MDM.")
                 completion(.failed)
@@ -1166,7 +1183,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     
     func registrationDidComplete() {
        
-        logger.log("webloginlog: Registration Did complete done.")
+        logger.debug("webloginlog: Registration Did complete done.")
         
     }
     
