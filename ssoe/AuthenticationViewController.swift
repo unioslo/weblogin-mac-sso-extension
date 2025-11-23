@@ -126,24 +126,24 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
         _ = self.view
         
         if (!RegistrationState.shared.isRegistrationInProgress){
-            logger.debug("webloginlog: viewDidAppear called.")
+            logger.info("webloginlog: viewDidAppear called.")
             if let url = url {
-                logger.debug("webloginlog: viewDidAppear. The url is: \(url.absoluteString)")
+                logger.info("webloginlog: viewDidAppear. The url is: \(url.absoluteString)")
                 webView.navigationDelegate=self
                 var request = URLRequest(url: url)
                 let cookies = getCookies()
                 
                 // We don't handle cookies anymore
-              //  if let cookies = cookies {
+               if let cookies = cookies {
                    // logger.log("webloginlog: Cookies are saved.")
-                  //  request.setValue(self.combineCookies(cookies: cookies), forHTTPHeaderField: "Cookie")
+                   //request.setValue(self.combineCookies(cookies: cookies), forHTTPHeaderField: "Cookie")
                     
-                //    }
+                   }
                 if let signedRefreshToken {
-                    logger.debug("webloginlog: Signed token being sent to Keycloak")
+                    logger.info("webloginlog: Signed token being sent to Keycloak")
                     request.setValue("Bearer \(signedRefreshToken)", forHTTPHeaderField: "Platform-SSO-Authorization")
                 }
-                //request.httpShouldHandleCookies=true
+               //request.httpShouldHandleCookies=true
             
                 webView.configuration.allowsInlinePredictions = true
                 webView.load(request)
@@ -187,7 +187,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             
             logger.info("webloginlog: checking authorization url: \(authorizationURL)")
             if request.url.absoluteURL.absoluteString.starts(with: authorizationURL) {
-                logger.debug("webloginlog: beginning authorization url: \(authorizationURL)")
+                logger.info("webloginlog: beginning authorization url: \(authorizationURL)")
                 
                 /*
                 if let components = URLComponents(url: request.url.absoluteURL, resolvingAgainstBaseURL: false),
@@ -331,7 +331,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             decisionHandler(.allow)
             return
         }
-        logger.debug("webloginlog: Entering decision policy for: \(webViewURL.absoluteString)")
+        let request = navigationAction.request
+        logger.info("webloginlog: Entering decision policy for: \(webViewURL.absoluteString)")
         
         // Handle required actions in Keycloak
         
@@ -339,8 +340,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         let loginActionUrl = "\(self.baseURL)/login-actions/"
         
         if (RegistrationState.shared.isRegistrationInProgress){
-            logger.debug( "webloginlog: Registration login flow.")
-
+            logger.info( "webloginlog: Registration login flow.")
             if webViewURL.absoluteString.starts(with: "weblogin-sso://idp-login-redirect"){
                 logger.debug( "webloginlog: Login successful. URL: \(webViewURL.absoluteString)")
                 var hasCode = false
@@ -409,13 +409,13 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 return
                 
             }else {
-                
+                logger.info("webloginglog: This shouldn't be shown now.")
                 decisionHandler(.allow)
             }
             return
         }
        
-        logger.debug("webloginlog: Navigation to: \(webViewURL.absoluteString)")
+        logger.info("webloginlog: Navigation to: \(webViewURL.absoluteString)")
         guard let request = navigationAction.request as? NSMutableURLRequest, let url = url else {
             decisionHandler(.allow)
             return
@@ -423,65 +423,78 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         }
         
         
-        if showedInteractiveLogin { self.view.isHidden = false }
+        //if showedInteractiveLogin { self.view.isHidden = false }
     
         // Here we handle SAML authentication
         // The difference is that there's no callback, so we detect
         // the referer. When the IDP returns to the referer
         // and a POST is done, here's the SAML request being posted.
         if (self.saml){
-            logger.debug("webloginlog: This is a SAML authentication.")
-            if (is_post){ // final step, we return to the browser with
-                //this redirection
-                post_done = true
-               
-                decisionHandler(.allow)
-                logger.debug("webloginlog: We cancel the navigation and return")
-                self.postHeaders["Location"] = webViewURL.absoluteString
-                if let response = HTTPURLResponse(url: url, statusCode: 303, httpVersion: nil, headerFields: self.postHeaders) {
-                        
-                        logger.debug("webloginlog: Saved cookies, redirecting to:  \(webViewURL.absoluteString)")
-                        self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
-                    }else {
-                        logger.debug("webloginlog: We couldn't send the user back!")
-                        
-                    }
-                    
-                    return
-                
-            }
-         
-            if (request.httpMethod == "POST" && webViewURL.absoluteString.starts(with: (kCallbackURLString) )){
-                logger.debug("webloginlog: POST request - let it finish")
-                is_post = true
-                decisionHandler(.allow)
-                
-                webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-                    self.postHeaders = [
-                            "Location": webViewURL.absoluteString,
-                            "Set-Cookie": self.combineCookies(cookies: cookies)
-                        ]
-                        self.storeCookies(cookies)
                    
+                    if (request.httpMethod == "POST" && webViewURL.absoluteString.starts(with: (kCallbackURLString) )){
+                        is_post = true
+                        decisionHandler(.cancel)
+                        var html = """
+                                <html>
+                                <body onload="document.forms[0].submit()">
+                                <form action="\(webViewURL.absoluteString)" method="post">
+
+                                """
+                        let httpBody = String(data: request.httpBody!, encoding: .utf8)
+                        let saml_response = httpBody!.split(separator: "&")
+                        
+                        for param in saml_response {
+                            let key_value = param.split(separator: "=",maxSplits: 1)
+                            let paramName = String(key_value[0])
+                            let rawValue = String(key_value[1])
+                            let decoded = rawValue.removingPercentEncoding ?? rawValue
+                            let escaped = htmlEscape(decoded)
+                            let line = "<input type=\"hidden\" name=\"\(paramName)\" value=\"\(escaped)\">"
+                            html += line
+                        }
+                        let theForm = html + """
+                                    
+                                    </form>
+                                    </body>
+                                    </html>
+                            """
+                        let formlines = theForm.split(separator: "\n")
                     
                         
+                        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+                            self.postHeaders = [
+                                   // "Location": webViewURL.absoluteString,
+                                    "Set-Cookie": self.combineCookies(cookies: cookies),
+                                    "Content-Type": "text/html; charset=utf-8"
+                                ]
+                              let httpVersion = "HTTP/1.1"
+                            if let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: httpVersion, headerFields: self.postHeaders) {
+                                
+                                let data = theForm.data(using: .utf8)
+                                self.authorizationRequest?.complete(httpResponse: response, httpBody: data)
+                                return
+                                
+                                
+                            }
+                                
+                            }
+                        return
+                         
+                     
+                        
                     }
-                 
-                return
-                
-            }
-            decisionHandler(.allow)
-            return
-        }
-        else {
-            logger.debug("webloginlog: Not a SAML request. ")
-        }
+                    decisionHandler(.allow)
+                    return
+                }
+                else {
+                    logger.debug("webloginlog: Not a SAML request. ")
+                }
         
         logger.debug("webloginlog: the URL is \(webViewURL.absoluteString) ")
         // Intercept redirect back to app callback
         
-        let components = URLComponents(url: webViewURL, resolvingAgainstBaseURL: false)
-        let code =  components?.queryItems?.first(where: { $0.name == "code" })?.value
+       // let components = URLComponents(url: webViewURL, resolvingAgainstBaseURL: false)
+    //    let code =  components?.queryItems?.first(where: { $0.name == "code" })?.value
         
         // needs fixing
         if webViewURL.absoluteString.starts(with: kCallbackURLString)  {
@@ -523,13 +536,14 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
     }
 
     
+
     
     public func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
         guard  let url = url, let webViewURL = webView.url else {
             return
         }
         
-        logger.debug("webloginlog: Entering Server redirection for: \(webViewURL.absoluteString)")
+        logger.info("webloginlog: Entering Server redirection for: \(webViewURL.absoluteString)")
 
         if (RegistrationState.shared.isRegistrationInProgress){
             
@@ -538,6 +552,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
  
         if (webViewURL.absoluteString.starts(with: (kCallbackURLString))) {
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies({ cookies in
+               
                 
                 let headers: [String:String] = [
                     "Location": webViewURL.absoluteString,
@@ -549,8 +564,17 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
              
                
          //       self.storeCookies(cookies)
-               
-                    if let response = HTTPURLResponse.init(url: url, statusCode: 303, httpVersion: nil, headerFields: headers) {
+                
+                
+                    
+                    
+                
+                if webViewURL.absoluteString.starts(with: self.baseURL) && self.saml == true {
+                    logger.log("webloginlog: redirecting to the idp. continue on the webview.")
+                    return
+                }
+                
+                    if let response = HTTPURLResponse.init(url: url, statusCode: 302, httpVersion: nil, headerFields: headers) {
                         logger.debug("webloginlog: we send the redirect to the browser: \(url.absoluteString)")
                         self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
                     }else {
@@ -559,22 +583,29 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 
             })
            
+        }else {
+            logger.log("webloginlog: not the callback redirection. continue")
         }
         
         
     
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        logger.debug("webloginlog: finished loading")
+        logger.info("webloginlog: finished loading")
         let webViewURL = webView.url!
-        guard firstResponseChecked == false else { return }
+      //  guard firstResponseChecked == false else { return }
         if (RegistrationState.shared.isRegistrationInProgress){
             return
         }
+        guard  let url = url, let webViewURL = webView.url else {
+            logger.log("webloginlog: I don't have an url, or the webview doesn't have one")
+            return
+        }
         
-        if (!firstResponseChecked){
-            firstResponseChecked = true
-            logger.debug("webloginlog: First response")
+        
+   
+    //    if (!firstResponseChecked){
+           // firstResponseChecked = true
             
             // Run a minimal DOM probe for a visible password input
             let js = "!!document.querySelector('input[type=\"password\"]')"
@@ -589,7 +620,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 
             
                 
-                if (hasPasswordField ) != nil{
+                if (hasPasswordField) != nil && is_post != true {
                     
                   // DispatchQueue.main.async {
                         if let win = self.view.window {
@@ -615,13 +646,13 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                    
                     logger.debug("webloginlog: Detected interactive login on first response. Showing UI immediately.")
                 } else {
-                    showWindowIfDelay()
+                    //showWindowIfDelay()
                     logger.debug("webloginlog: No password field on first response; keeping UI hidden for SSO.")
                 }
             }
             
             
-        }
+       // }
         
         
         
@@ -694,7 +725,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         return nil
     }
     func showWindowIfDelay() {
-        self.timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { timer in
+        self.timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { timer in
             logger.debug("webloginlog: more than 5 seconds without SSO - we make the web browser visible.")// Perform actions here
             self.isMainViewHidden = false
             if let win = self.view.window {
@@ -1240,7 +1271,7 @@ private extension AuthenticationViewController {
         self.mdmConfig = (baseURL, issuer, clientID, audience)
     }
     
-        
+    
     func keyIdentifier(for key: SecKey) -> String? {
         guard let pubKey = SecKeyCopyPublicKey(key),
               let data = SecKeyCopyExternalRepresentation(pubKey, nil) as Data? else {
@@ -1257,7 +1288,7 @@ private extension AuthenticationViewController {
         nonceRequest.httpMethod = "POST"
         nonceRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         nonceRequest.setValue(clientRequestId, forHTTPHeaderField: "client-request-id")
-
+        
         let formData = "grant_type=srv_challenge"
         nonceRequest.httpBody = formData.data(using: .utf8)
         do {
@@ -1271,7 +1302,7 @@ private extension AuthenticationViewController {
             return nil
         }
     }
-        
+    
     
     func exchangeCodeForToken(code: String) async throws -> TokenResponse {
         guard let baseURL = self.mdmConfig?.baseURL else { throw URLError(.badURL) }
@@ -1281,16 +1312,16 @@ private extension AuthenticationViewController {
         
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
+        
         let verifier = RegistrationState.shared.pkceVerifier ?? ""
         let body = "grant_type=authorization_code&code=\(code)&redirect_uri=weblogin-sso://idp-login-redirect&client_id=\(clientId)&code_verifier=\(verifier)"
         request.httpBody = body.data(using: .utf8)
-
+        
         let (data, _) = try await URLSession.shared.data(for: request)
         do {
             let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
-
-
+            
+            
             if let json = json {
                 for (key, value) in json {
                     logger.debug("webloginlog: \(key): \(String(describing: value))")
@@ -1298,7 +1329,7 @@ private extension AuthenticationViewController {
             } else {
                 logger.error("webloginlog: Could not parse token response as dictionary")
             }
-
+            
         } catch {
             logger.error("webloginlog: Failed to decode JSON: \(error.localizedDescription)")
             if let rawString = String(data: data, encoding: .utf8) {
@@ -1308,40 +1339,40 @@ private extension AuthenticationViewController {
         
         return try JSONDecoder().decode(TokenResponse.self, from: data)
     }
-
+    
     func decodeJWT(_ jwt: String) -> [String: Any]? {
         let segments = jwt.split(separator: ".")
         guard segments.count >= 2 else { return nil }
-
+        
         let payloadSegment = segments[1]
-
+        
         var payload = payloadSegment
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
-
+        
         // Pad base64 if needed
         while payload.count % 4 != 0 {
             payload.append("=")
         }
-
+        
         guard let data = Data(base64Encoded: payload) else { return nil }
-
+        
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
-
+    
     struct TokenResponse: Codable {
         let access_token: String
         let refresh_token: String
         let id_token: String
         let expires_in: Int
     }
-
+    
     
     
     struct Nonce: Decodable {
-            let nonce: UUID
+        let nonce: UUID
     }
-        
+    
     func exportPublicKeyDER(_ key: SecKey) -> Data {
         var error: Unmanaged<CFError>?
         guard let der = SecKeyCopyExternalRepresentation(key, &error) as Data? else {
@@ -1354,7 +1385,7 @@ private extension AuthenticationViewController {
         let hash = SHA256.hash(data: data)
         return Data(hash)
     }
-
+    
     
     func base64URLEncode(_ data: Data) -> String {
         var s = data.base64EncodedString()
@@ -1369,7 +1400,7 @@ private extension AuthenticationViewController {
         let hash = sha256(der)
         return hash.base64EncodedString()
     }
-
+    
     func showProcessingOverlay() {
         overlayView.isHidden = false
         spinner.startAnimation(nil)
@@ -1378,4 +1409,13 @@ private extension AuthenticationViewController {
         overlayView.isHidden = true
         spinner.stopAnimation(nil)
     }
+    
+    func htmlEscape(_ s: String) -> String {
+        return s
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+    
 }
