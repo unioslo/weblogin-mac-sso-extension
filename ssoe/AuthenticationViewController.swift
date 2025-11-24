@@ -169,6 +169,17 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         self.firstResponseChecked = false
         self.showedInteractiveLogin = false
         
+        let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")
+        let disableSSO = sharedDefaults?.bool(forKey: "disable_sso") ?? false
+        
+        logger.log("webloginlog: is sso disabled? \(disableSSO)")
+        
+        if disableSSO {
+            logger.info("webloginlog: Disabling SSO, aborting")
+            authorizationRequest?.doNotHandle()
+            return
+        }
+        
         
         guard let mdmConfig else {
             logger.error("webloginlog: No MDM config, aborting")
@@ -215,6 +226,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         
         let loginManager = request.loginManager
         let tokens = loginManager?.ssoTokens
+        
+        
      
     /*
         if let tokens {

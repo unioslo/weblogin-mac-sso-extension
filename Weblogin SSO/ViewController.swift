@@ -11,13 +11,21 @@ import Security
 
 class ViewController: NSViewController {
 
-    
+    /*
     @IBAction func logoutButtonPressed(_ sender: Any) {
             clearKeychainCookies()
             clearWKWebViewSession()
             // Any other app-specific logout logic here
             print("User logged out.")
         }
+     */
+    
+    @IBAction func turnOffSwitchToggled (_ sender: NSSwitch) {
+        let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")!
+        let isOff = (sender.state == .off)
+        sharedDefaults.set(isOff, forKey: "disable_sso")
+        sharedDefaults.synchronize()
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
