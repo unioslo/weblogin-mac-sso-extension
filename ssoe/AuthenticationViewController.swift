@@ -542,14 +542,20 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     logger.debug("webloginlog: Not a SAML request. ")
                 }
         
-        logger.debug("webloginlog: the URL is \(webViewURL.absoluteString) ")
-        // Intercept redirect back to app callback
         
        // let components = URLComponents(url: webViewURL, resolvingAgainstBaseURL: false)
     //    let code =  components?.queryItems?.first(where: { $0.name == "code" })?.value
+        /*
+        var callbackIsIdpInternalClient = false
+        if webViewURL.absoluteString.starts(with: self.baseURL) && self.saml == false && kCallbackURLString.starts(with: baseURL) {
+            callbackIsIdpInternalClient = true
+            
+        }
+         */
+        
         
         // needs fixing
-        if webViewURL.absoluteString.starts(with: kCallbackURLString)  {
+        if webViewURL.absoluteString.starts(with: kCallbackURLString) {
        
         logger.debug("webloginlog: Intercepted callback redirect: \(webViewURL.absoluteString)")
 
@@ -568,7 +574,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     "Set-Cookie": self.combineCookies(cookies: cookies)
                 ]
                 
-           
+                
                     if let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil, headerFields: headers) {
                         
                         logger.debug("webloginlog: Sending redirect response to browser from intercepted: \(webViewURL.absoluteString)")
@@ -595,7 +601,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             return
         }
         
-
+        
+        
         
         if let redirectURL = webViewURL.baseURL?.absoluteString {
             logger.info("webloginlog: Entering redirection to url starting with: \(redirectURL)")
@@ -608,11 +615,17 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
  
         
        
+      
+        /*
+        var callbackIsIdpInternalClient = false
+        if webViewURL.absoluteString.starts(with: self.baseURL) && self.saml == false && kCallbackURLString.starts(with: baseURL) {
+            callbackIsIdpInternalClient = true
+            
+        }
+        */
         
         
-        
-        
-        if (webViewURL.absoluteString.starts(with: (kCallbackURLString))) {
+        if (webViewURL.absoluteString.starts(with: (kCallbackURLString)) ) {
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies({ cookies in
                
                 
@@ -621,6 +634,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     "Set-Cookie": self.combineCookies(cookies: cookies)
                 ]
                  
+                
+                
                     // webView.configuration.websiteDataStore.
               // let headers: [String:String] = [:]
              
@@ -637,7 +652,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 }
                 
                     if let response = HTTPURLResponse.init(url: url, statusCode: 302, httpVersion: nil, headerFields: headers) {
-                        logger.debug("webloginlog: we send the redirect to the browser: \(url.absoluteString)")
+                        
                         self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
                     }else {
                         logger.error("webloginlog: Failed to construct HTTPURLResponse.")
@@ -657,7 +672,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         if (RegistrationState.shared.isRegistrationInProgress){
             return
         }
-
+      
+    
+        
         guard   let webViewURL = webView.url else {
             logger.error("webloginlog: I don't have an url, or the webview doesn't have one")
             return
@@ -666,7 +683,14 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         if let loadedURL = webViewURL.baseURL?.absoluteString {
             logger.log("webloginlog: Page starting with \(loadedURL) has been loaded.")
         }
+        
+        
+        let isRequiredAction = webViewURL.absoluteString.starts(with: baseURL) && webView.url?.relativePath.contains("/login-actions") == true
+        logger.log("webloginlog: this is a required action")
             
+    
+        
+        
             // Run a minimal DOM probe for a visible password input
             let js = "!!document.querySelector('input[type=\"password\"]')"
             
@@ -677,10 +701,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     return
                 }
                 let hasPasswordField = (result as? Bool) ?? false
-                
+                logger.debug("webloginlog: the form has a password field: \(hasPasswordField)")
             
                 
-                if (hasPasswordField) == true && is_post != true {
+                if (self.saml == false && hasPasswordField == true) || (self.saml == true && is_post != true && hasPasswordField == true) || isRequiredAction {
                     
                   // DispatchQueue.main.async {
                         if let win = self.view.window {

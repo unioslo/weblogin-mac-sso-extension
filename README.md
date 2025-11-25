@@ -25,9 +25,9 @@ Compile this with XCode and install on your Mac. It requires a companion MDM pro
     <array>
       <dict>
         <key>BaseURL</key>
-        <string>https://uio.keycloak.no/realms/uio/</string>
+        <string>https://<your-keycloak-instance>/realms/<your-realm></string>
         <key>Issuer</key>
-        <string>https://uio.keycloak.no/</string>
+        <string>https://<your-keycloak-instance>/realms/<your-realm></string>
         <key>Audience</key>
         <string>psso</string>
         <key>ClientID</key>
@@ -80,8 +80,9 @@ Compile this with XCode and install on your Mac. It requires a companion MDM pro
         <integer>1</integer>
         <key>URLs</key>
         <array>
-          <string>https://uio.keycloak.no/realms/uio/protocol/</string>
-          <string>https://uio.keycloak.no/realms/uio/psso</string>
+          <string>https://<your-keycloak-instance>/realms/<your-realm>/protocol/</string>
+          <string>https://<your-keycloak-instance>/realms/<your-realm>/psso</string>
+          <string>https://<your-keycloak-instance>/realms/<your-realm>/psso/token</string>
         </array>
         <key>PlatformSSO</key>
         <dict>
