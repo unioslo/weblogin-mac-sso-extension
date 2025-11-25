@@ -78,7 +78,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
         // Overlay config
         
         
-        // Create overlay
+            // Create overlay
             overlayView = NSView()
             overlayView.wantsLayer = true
             overlayView.layer?.backgroundColor = NSColor(calibratedWhite: 0, alpha: 0.35).cgColor
@@ -143,7 +143,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
                     logger.debug("webloginlog: Signed token being sent to Keycloak")
                     request.setValue("Bearer \(signedRefreshToken)", forHTTPHeaderField: "Platform-SSO-Authorization")
                 }
-               request.httpShouldHandleCookies = true
+                request.httpShouldHandleCookies = true
             
                 webView.configuration.allowsInlinePredictions = true
                 webView.load(request)
