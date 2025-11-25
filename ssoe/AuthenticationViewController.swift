@@ -10,6 +10,7 @@ import AuthenticationServices
 import WebKit
 import OSLog
 import CryptoKit
+import LocalAuthentication
 
 
 private let kService = "Weblogin SSO Session Cache"
@@ -142,7 +143,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
                     logger.debug("webloginlog: Signed token being sent to Keycloak")
                     request.setValue("Bearer \(signedRefreshToken)", forHTTPHeaderField: "Platform-SSO-Authorization")
                 }
-               //request.httpShouldHandleCookies=true
+               request.httpShouldHandleCookies = true
             
                 webView.configuration.allowsInlinePredictions = true
                 webView.load(request)
@@ -270,7 +271,17 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             logger.debug("webloginlog: beginAuthorization. The request url starts with: \(authURL)")
         }
         
-       
+        /*
+         TODO: Maybe implement forced reauthentication loop
+        let ctx = LAContext()
+        ctx.localizedReason = "some reason"
+        ctx.localizedCancelTitle = "nah!"
+        
+        ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "log in to Weblogin") { (success, error) in
+            logger.log("webloginlog: I got to login. Success: \(success)")
+        
+        }
+         */
         
         request.presentAuthorizationViewController(completion: { (success, error) in
             if error != nil {
@@ -557,11 +568,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         // needs fixing
         if webViewURL.absoluteString.starts(with: kCallbackURLString) {
        
-        logger.debug("webloginlog: Intercepted callback redirect: \(webViewURL.absoluteString)")
+            logger.debug("webloginlog: Intercepted redirect to callback. Send it to the browser." )
 
             // Stop navigation
            
-            logger.debug("webloginlog: Handling it as OIDC")
             decisionHandler(.cancel)
             
      
@@ -577,7 +587,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 
                     if let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil, headerFields: headers) {
                         
-                        logger.debug("webloginlog: Sending redirect response to browser from intercepted: \(webViewURL.absoluteString)")
+                        logger.debug("webloginlog: Sending redirect response to browser from intercepted url.")
                         self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
                     } else {
                         logger.error("webloginlog: Failed to construct HTTPURLResponse for oidc.")

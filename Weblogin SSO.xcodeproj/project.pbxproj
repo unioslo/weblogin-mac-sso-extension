@@ -377,6 +377,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Weblogin-SSO-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Weblogin SSO";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
@@ -407,6 +408,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Weblogin-SSO-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Weblogin SSO";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
@@ -433,7 +435,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ssoe/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = ssoe;
+				INFOPLIST_KEY_CFBundleDisplayName = Weblogin;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -460,7 +462,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ssoe/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = ssoe;
+				INFOPLIST_KEY_CFBundleDisplayName = Weblogin;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
