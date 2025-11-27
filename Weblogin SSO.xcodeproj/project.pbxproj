@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		911177322ED83A2B001DC91F /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 911177312ED83A2B001DC91F /* Localizable.xcstrings */; };
+		911177332ED83A2B001DC91F /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 911177312ED83A2B001DC91F /* Localizable.xcstrings */; };
 		9148E1392EA8BE79005279FD /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9148E1222EA8A225005279FD /* AuthenticationServices.framework */; };
 		9148E1442EA8BE79005279FD /* ssoe.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9148E1382EA8BE79005279FD /* ssoe.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -36,6 +38,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		911177312ED83A2B001DC91F /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		9148E10A2EA8A206005279FD /* Weblogin SSO.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Weblogin SSO.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9148E1222EA8A225005279FD /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		9148E1382EA8BE79005279FD /* ssoe.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ssoe.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -89,6 +92,7 @@
 		9148E1012EA8A206005279FD = {
 			isa = PBXGroup;
 			children = (
+				911177312ED83A2B001DC91F /* Localizable.xcstrings */,
 				9148E10C2EA8A206005279FD /* Weblogin SSO */,
 				9148E13A2EA8BE79005279FD /* ssoe */,
 				9148E1212EA8A225005279FD /* Frameworks */,
@@ -186,6 +190,7 @@
 			knownRegions = (
 				en,
 				Base,
+				nb,
 			);
 			mainGroup = 9148E1012EA8A206005279FD;
 			minimizedProjectReferenceProxies = 1;
@@ -205,6 +210,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				911177322ED83A2B001DC91F /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -212,6 +218,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				911177332ED83A2B001DC91F /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -248,6 +255,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -303,6 +311,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -312,6 +321,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -360,6 +370,7 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Release;
 		};

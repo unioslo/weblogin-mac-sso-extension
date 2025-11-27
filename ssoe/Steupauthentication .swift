@@ -71,14 +71,15 @@ extension AuthenticationViewController: WKScriptMessageHandler {
         Task {
             let ctx = LAContext()
  
-            ctx.localizedReason = "authenticate to Weblogin"
+            let localizedReason = String(localized: "authenticate you")
             
-            ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "log in to Weblogin") { (success, error) in
+            ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localizedReason) { (success, error) in
                 logger.log("webloginlog: User asked for reauthentication. Success: \(success)")
                 
                 if success != true {
                     logger.log("webloginlog: User didn't approve login. Returning.")
-                    self.authorizationRequest?.doNotHandle()
+                   // self.authorizationRequest?.cancel()
+                    self.sendSignedTokenToJS( "none");
                     return
                     
                 }

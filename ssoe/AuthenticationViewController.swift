@@ -668,7 +668,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         
         
         let isRequiredAction = webViewURL.absoluteString.starts(with: baseURL) && webView.url?.relativePath.contains("/login-actions") == true
-        logger.log("webloginlog: this is a required action")
+        logger.log("webloginlog: this is a required action: \(isRequiredAction)")
+        logger.log("webloginlog: \(webViewURL.absoluteString)")
             
         // Run a minimal DOM probe for a visible password input
         
@@ -686,7 +687,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 logger.debug("webloginlog: the form has a password field: \(hasPasswordField)")
             
                 
-                if (self.saml == false && hasPasswordField == true) || (self.saml == true && is_post != true && hasPasswordField == true || isRequiredAction) {
+                if (self.saml == false && hasPasswordField == true) || (self.saml == true && is_post != true && hasPasswordField == true || isRequiredAction == true) {
                     
                   // DispatchQueue.main.async {
                         if let win = self.view.window {

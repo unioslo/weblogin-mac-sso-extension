@@ -4,9 +4,10 @@
 <dict>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>authsrv:auth.med-lo.eu?mode=developer</string>
-		<string>webcredentials:auth.med-lo.eu?mode=developer</string>
 		<string>authsrv:uio.keycloak.no?mode=developer</string>
+		<string>authsrv:weblogin2-test.uio.no</string>
+		<string>authsrv:weblogin2.uio.no</string>
+		<string>webcredentials:weblogin2.uio.no</string>
 	</array>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
