@@ -993,6 +993,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
 
         DispatchQueue.main.async {
             self.webView.navigationDelegate = self
+            self.isMainViewHidden = false 
             self.webView.load(URLRequest(url: authURL))
         }
     }

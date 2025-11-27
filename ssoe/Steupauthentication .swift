@@ -39,6 +39,9 @@ extension AuthenticationViewController: WKScriptMessageHandler {
 
         if let type = body["type"] as? String, type == "getSignedToken" {
             
+       
+            
+            
             handleStepUpRequest{
                 error in
                     if let error = error {
@@ -84,7 +87,16 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                     
                 }
                 
+          
+                
                 self.loginManager?.userNeedsReauthentication{ error in
+                    
+                    if error != nil {
+                        DispatchQueue.main.async {
+                            self.sendSignedTokenToJS("none")
+                            
+                        }
+                    }
                     
                     completion(error)
                 }
