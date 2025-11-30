@@ -93,6 +93,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
         guard let baseURL = self.mdmConfig?.baseURL else {
             return
         }
+        
         self.baseURL = baseURL
         // Overlay config
         
@@ -100,7 +101,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
             // Create overlay
             overlayView = NSView()
             overlayView.wantsLayer = true
-            overlayView.layer?.backgroundColor = NSColor(calibratedWhite: 0, alpha: 0.35).cgColor
+            overlayView.layer?.backgroundColor = NSColor(calibratedWhite: 0, alpha: 0.75).cgColor
             overlayView.isHidden = true
             overlayView.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(overlayView)
@@ -115,10 +116,11 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
 
             // Add spinner
             spinner = NSProgressIndicator()
-            spinner.style = .spinning
+        spinner.style = .spinning
             spinner.controlSize = .large
             spinner.isIndeterminate = true
             spinner.startAnimation(nil)
+            spinner.appearance = NSAppearance(named: .darkAqua) ?? NSAppearance()
             spinner.translatesAutoresizingMaskIntoConstraints = false
             overlayView.addSubview(spinner)
 
@@ -201,7 +203,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         let authorizationURLs = [ "\(baseURL)/protocol/openid-connect/auth", "\(baseURL)/protocol/saml?SAMLRequest"]
         
         var startAuthorization = false
-       
+        logger.log("webloginlog: beginAuthorization url \(request.url.absoluteURL.absoluteString)")
         for authorizationURL in authorizationURLs {
             
             logger.info("webloginlog: checking authorization url: \(authorizationURL)")
@@ -244,7 +246,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             for token in tokens {
                 let name = token.key as? String
                     let value = token.value as? String? ?? "nil"
-                logger.log("webauthnlog: \(name ?? "nil"): \(value!)")
+             //   logger.log("webloginlog: \(name ?? "nil"): \(value!)")
                 }
             }
      
@@ -335,20 +337,20 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             return
         }
         
-        if let decisionBaseURL = webViewURL.baseURL?.absoluteString {
-            logger.info("webloginlog: Entering decision policy for url starting with: \(decisionBaseURL)")
-        }
+        
+        logger.info("webloginlog: Entering decision policy for url starting with: \(webViewURL.absoluteString)")
+  
         
         
                 
         if (RegistrationState.shared.isRegistrationInProgress){
             logger.info( "webloginlog: Registration login flow.")
             if webViewURL.absoluteString.starts(with: "weblogin-sso://idp-login-redirect"){
-                logger.debug( "webloginlog: Login successful. URL: \(webViewURL.absoluteString)")
+            
                 var hasCode = false
                 if let components = URLComponents(url: webViewURL, resolvingAgainstBaseURL: false)  {
                     let code =  components.queryItems?.first(where: { $0.name == "code" })?.value
-                    logger.debug("webloginlog: Code is: \(code ?? "nil")")
+           
 
                     if code != nil {
                         hasCode = true
@@ -559,6 +561,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                         
                         logger.debug("webloginlog: Sending redirect response to browser from intercepted url.")
                         self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
+                        return
+                        
                     } else {
                         logger.error("webloginlog: Failed to construct HTTPURLResponse for oidc.")
                     }
@@ -669,7 +673,6 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         
         let isRequiredAction = webViewURL.absoluteString.starts(with: baseURL) && webView.url?.relativePath.contains("/login-actions") == true
         logger.log("webloginlog: this is a required action: \(isRequiredAction)")
-        logger.log("webloginlog: \(webViewURL.absoluteString)")
             
         // Run a minimal DOM probe for a visible password input
         
@@ -693,10 +696,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                         if let win = self.view.window {
                                    win.makeKeyAndOrderFront(nil)
                                    // set desired content size if needed
-                                   win.setContentSize(NSMakeSize(600, 550))
+                                   win.setContentSize(NSMakeSize(700, 560))
                                }
                     self.view.window?.makeKeyAndOrderFront(nil)
-                    self.view.window?.setContentSize(NSMakeSize(600,550))
+                    self.view.window?.setContentSize(NSMakeSize(700,560))
                        self.hideProcessingOverlay()
                         self.isMainViewHidden = false
                         // Don't forget to call layoutIfNeeded() when you messing with the constraints
@@ -794,7 +797,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             if let win = self.view.window {
                        win.makeKeyAndOrderFront(nil)
                        // set desired content size if needed
-                       win.setContentSize(NSMakeSize(600, 550))
+                       win.setContentSize(NSMakeSize(700, 560))
                    }
           
             self.isMainViewHidden = false
@@ -857,6 +860,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         options: ASAuthorizationProviderExtensionRequestOptions = [],
         completion: @escaping (ASAuthorizationProviderExtensionRegistrationResult) -> Void
     ){
+        
+    
         logger.debug("webloginlog: is device registered? \(loginManager.isDeviceRegistered)")
         logger.info("webloginlog: Starting user registration")
             RegistrationState.shared.loginManager = loginManager
@@ -876,7 +881,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 if let win = self.view.window {
                     win.makeKeyAndOrderFront(nil)
                     // set desired content size if needed
-                    win.setContentSize(NSMakeSize(600, 550))
+                    win.setContentSize(NSMakeSize(700, 560))
                 }
                 
                 webView.navigationDelegate=self
@@ -913,6 +918,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                                  (ASAuthorizationProviderExtensionRegistrationResult) ->
                                  Void) {
         logger.debug("webloginlog: beginDeviceRegistration")
+        
         RegistrationState.shared.loginManager = loginManager
         RegistrationState.shared.registrationCompletion = completion
         RegistrationState.shared.isRegistrationInProgress = true
@@ -922,7 +928,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         if let win = self.view.window {
             win.makeKeyAndOrderFront(nil)
             // set desired content size if needed
-            win.setContentSize(NSMakeSize(600, 550))
+            win.setContentSize(NSMakeSize(700, 560))
         }
         
         webView.navigationDelegate=self
@@ -935,6 +941,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         // Force redraw
         self.view.displayIfNeeded()
+        
         loginManager.presentRegistrationViewController {
             result in
   
@@ -952,6 +959,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     func idpLogin() {
         logger.debug("webloginlog: Starting IdP login")
 
+        RegistrationState.shared.accessToken = nil
         guard let baseURL = self.mdmConfig?.baseURL,
               let clientID = self.mdmConfig?.clientID else {
             logger.error("Missing MDM baseURL or clientID")
@@ -980,8 +988,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             URLQueryItem(name: "code_challenge", value: challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             // Optional extras:
-            // URLQueryItem(name: "login_hint", value: "francis@uio.no"),
-            // URLQueryItem(name: "prompt", value: "login")
+ 
+            URLQueryItem(name: "prompt", value: "login")
         ]
 
         guard let authURL = components.url else {
@@ -1056,6 +1064,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         
         let baseURL = mdmConfig?.baseURL
+     
         
         do {
             let config = configuration()
@@ -1165,12 +1174,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
              return
          }
         
-        guard let config = loginManager.userLoginConfiguration else {
-            logger.error("webloginlog: Failed to get user login configuration.")
-            completion(.failed)
-            return
-        }
-       
+    
+        logger.log("webloginlog: User being registered is: \(userName)")
+        
+        
         let baseURL = mdmConfig?.baseURL
         guard let userPublicKey = SecKeyCopyPublicKey(userKey) else {
             logger.error("webloginlog: Can't export the public key for the user.")
@@ -1178,12 +1185,11 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             return
             
         }
-        
-        
+        let config = ASAuthorizationProviderExtensionUserLoginConfiguration.init(loginUserName: userName)
         let userKeyId = computeKid(from: userPublicKey)
         let userKeyData = SecKeyCopyExternalRepresentation(userPublicKey, nil)! as Data
         let userKeyB64 = userKeyData.base64EncodedString(options: [])
-        
+        config.loginUserName = userName
          
         logger.debug("webloginlog: username registered from idp is \(userName)")
       

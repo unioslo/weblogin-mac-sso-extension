@@ -16,11 +16,19 @@
         </customObject>
         <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
         <customView clipsToBounds="NO" translatesAutoresizingMaskIntoConstraints="NO" id="zWq-nk-bXB">
-            <rect key="frame" x="0.0" y="0.0" width="600" height="550"/>
+            <rect key="frame" x="0.0" y="0.0" width="700" height="560"/>
             <subviews>
+                <wkWebView wantsLayer="YES" id="uMJ-zc-bIr">
+                    <rect key="frame" x="0.0" y="40" width="700" height="520"/>
+                    <autoresizingMask key="autoresizingMask" flexibleMinY="YES"/>
+                    <wkWebViewConfiguration key="configuration">
+                        <audiovisualMediaTypes key="mediaTypesRequiringUserActionForPlayback" none="YES"/>
+                        <wkPreferences key="preferences"/>
+                    </wkWebViewConfiguration>
+                </wkWebView>
                 <button verticalHuggingPriority="750" id="XDt-ez-GN0" userLabel="Cancel">
-                    <rect key="frame" x="510" y="18" width="91" height="25"/>
-                    <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                    <rect key="frame" x="301" y="8" width="700" height="25"/>
+                    <autoresizingMask key="autoresizingMask" flexibleMinY="YES"/>
                     <buttonCell key="cell" type="roundTextured" title="Cancel" bezelStyle="texturedRounded" imagePosition="trailing" alignment="center" lineBreakMode="truncatingTail" state="on" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="5UW-sC-dfy" userLabel="Cancel">
                         <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                         <font key="font" metaFont="system"/>
@@ -31,14 +39,6 @@
                     <color key="bezelColor" name="AccentColor"/>
                     <color key="contentTintColor" name="AccentColor"/>
                 </button>
-                <wkWebView wantsLayer="YES" id="uMJ-zc-bIr">
-                    <rect key="frame" x="0.0" y="50" width="600" height="500"/>
-                    <autoresizingMask key="autoresizingMask"/>
-                    <wkWebViewConfiguration key="configuration">
-                        <audiovisualMediaTypes key="mediaTypesRequiringUserActionForPlayback" none="YES"/>
-                        <wkPreferences key="preferences"/>
-                    </wkWebViewConfiguration>
-                </wkWebView>
             </subviews>
             <point key="canvasLocation" x="55" y="-693"/>
         </customView>

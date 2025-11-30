@@ -54,12 +54,24 @@ extension AuthenticationViewController {
         }
         let now = Int(Date().timeIntervalSince1970)
         
+        guard let userKey = loginManager.key(for: .userSecureEnclaveKey) else {
+            return nil
+        }
+        
         
         guard let signingPublicKey = SecKeyCopyPublicKey(signingKey) else {
             logger.error("webloginlog: Failed to extract public keys.")
             return nil
         }
+        
+        
+        guard let userPublicKey = SecKeyCopyPublicKey(userKey) else {
+            logger.error("webloginlog: Failed to extract public keys.")
+            return nil
+        }
+        
         let signKeyId = computeKid(from: signingPublicKey)
+        let userKid = computeKid(from: userPublicKey)
         
         guard let username = loginManager.userLoginConfiguration?.loginUserName else {
             logger.error("webloginlog: NO USERNAME SAVED!")
@@ -70,7 +82,8 @@ extension AuthenticationViewController {
             "refresh_token": token,
             "kid": signKeyId,
             "signed_at": now,
-            "username" : username
+            "username" : username,
+            "user_kid" : userKid
         ]
         do {
             let jsonData = try? JSONSerialization.data(withJSONObject: envelope, options: [])
@@ -116,7 +129,7 @@ extension AuthenticationViewController {
             
             if let json = json {
                 for (key, value) in json {
-                    logger.debug("webloginlog: \(key): \(String(describing: value))")
+                   // logger.debug("webloginlog: \(key): \(String(describing: value))")
                 }
             } else {
                 logger.error("webloginlog: Could not parse token response as dictionary")

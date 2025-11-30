@@ -57,7 +57,7 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                         self.signedRefreshToken = signedToken
                         self.sendSignedTokenToJS(self.signedRefreshToken ?? "none");
                         
-                        
+                    
                     }
                     
                         
@@ -94,11 +94,13 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                     if error != nil {
                         DispatchQueue.main.async {
                             self.sendSignedTokenToJS("none")
+                            completion(error)
                             
                         }
+                        return
                     }
                     
-                    completion(error)
+                completion(nil)
                 }
                     
                 }
