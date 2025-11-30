@@ -203,7 +203,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         let authorizationURLs = [ "\(baseURL)/protocol/openid-connect/auth", "\(baseURL)/protocol/saml?SAMLRequest"]
         
         var startAuthorization = false
-        logger.log("webloginlog: beginAuthorization url \(request.url.absoluteURL.absoluteString)")
+      
         for authorizationURL in authorizationURLs {
             
             logger.info("webloginlog: checking authorization url: \(authorizationURL)")
@@ -336,11 +336,6 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             decisionHandler(.allow)
             return
         }
-        
-        
-        logger.info("webloginlog: Entering decision policy for url starting with: \(webViewURL.absoluteString)")
-  
-        
         
                 
         if (RegistrationState.shared.isRegistrationInProgress){
