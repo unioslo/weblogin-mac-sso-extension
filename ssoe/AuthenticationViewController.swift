@@ -180,6 +180,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         self.firstResponseChecked = false
         self.showedInteractiveLogin = false
         webView.configuration.userContentController.add(self, name: "pssoStepUp")
+        
         let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")
         let disableSSO = sharedDefaults?.bool(forKey: "disable_sso") ?? false
         
@@ -187,6 +188,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         
         if disableSSO {
             logger.info("webloginlog: Disabling SSO, aborting")
+            webView.configuration.userContentController.removeAllScriptMessageHandlers()
             authorizationRequest?.doNotHandle()
             return
         }
@@ -231,6 +233,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         }
         
         if (!startAuthorization) {
+            webView.configuration.userContentController.removeAllScriptMessageHandlers()
             authorizationRequest?.doNotHandle()
             return
         }
@@ -308,12 +311,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             var request = URLRequest(url: url)
             let cookies = getCookies()
       
-            // We don't handle cookies anymore
-            if let cookies = cookies {
-                // logger.log("webloginlog: Cookies are saved.")
-                //request.setValue(self.combineCookies(cookies: cookies), forHTTPHeaderField: "Cookie")
-                
-            }
+
             if let signedRefreshToken {
                 logger.debug("webloginlog: Signed token being sent to Keycloak")
                 request.setValue("Bearer \(signedRefreshToken)", forHTTPHeaderField: "Platform-SSO-Authorization")
@@ -357,6 +355,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                         self.view.layoutSubtreeIfNeeded()
                          */
                         showProcessingOverlay()
+                        
                         self.authorizationRequest?.complete()
                         
                         //self.authorizationRequest?.doNotHandle()
@@ -404,6 +403,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     RegistrationState.shared.clear()
                 }
                 decisionHandler(.cancel)
+                webView.configuration.userContentController.removeAllScriptMessageHandlers()
                 self.authorizationRequest?.doNotHandle()
                 return
                 
@@ -455,7 +455,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     ]
                     let httpVersion = "HTTP/1.1"
                     if let response = HTTPURLResponse(url: url, statusCode: 303, httpVersion: httpVersion, headerFields: self.postHeaders) {
-                        
+                        webView.configuration.userContentController.removeAllScriptMessageHandlers()
                         self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
                         return
                         
@@ -504,6 +504,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                             if let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: httpVersion, headerFields: self.postHeaders) {
                                 
                                 let data = theForm.data(using: .utf8)
+                                webView.configuration.userContentController.removeAllScriptMessageHandlers()
                                 self.authorizationRequest?.complete(httpResponse: response, httpBody: data)
                                 return
                                 
@@ -555,6 +556,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     if let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil, headerFields: headers) {
                         
                         logger.debug("webloginlog: Sending redirect response to browser from intercepted url.")
+                        webView.configuration.userContentController.removeAllScriptMessageHandlers()
                         self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
                         return
                         
@@ -631,7 +633,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 }
                 
                     if let response = HTTPURLResponse.init(url: url, statusCode: 302, httpVersion: nil, headerFields: headers) {
-                        
+                        webView.configuration.userContentController.removeAllScriptMessageHandlers()
                         self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
                     }else {
                         logger.error("webloginlog: Failed to construct HTTPURLResponse.")
