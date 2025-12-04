@@ -48,7 +48,7 @@ extension AuthenticationViewController {
         }
     }
     
-    func signToken(token: String, loginManager: ASAuthorizationProviderExtensionLoginManager) -> String? {
+    func signToken(token: String, tokenType: String, loginManager: ASAuthorizationProviderExtensionLoginManager) -> String? {
         guard let signingKey = loginManager.key(for: .sharedDeviceSigning) else {
             return nil
         }
@@ -79,7 +79,8 @@ extension AuthenticationViewController {
         }
         
         let envelope: [String: Any] = [
-            "refresh_token": token,
+            "token": token,
+            "token_type" : tokenType,
             "kid": signKeyId,
             "signed_at": now,
             "username" : username,

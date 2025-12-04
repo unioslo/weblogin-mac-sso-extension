@@ -34,7 +34,7 @@ import LocalAuthentication
 private let kService = "Weblogin SSO Session Cache"
 let logger = Logger(subsystem: "no.uio.WebloginSSO", category: "general")
 
-class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
+class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
     
         var overlayView: NSView!
         var spinner: NSProgressIndicator!
@@ -65,7 +65,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
                 view.layer?.setNeedsLayout()
                 }
             }
-        var signedRefreshToken: String?
+        var signedTokenToSend: String?
         var baseURL = ""
         var loginManager: ASAuthorizationProviderExtensionLoginManager?
         var mdmConfig: (baseURL: String, issuer: String, clientID: String, audience: String)?
@@ -93,6 +93,8 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
         guard let baseURL = self.mdmConfig?.baseURL else {
             return
         }
+
+                
         
         self.baseURL = baseURL
         // Overlay config
@@ -149,8 +151,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate  {
     }
     override func viewDidAppear() {
         _ = self.view
-        
-
+       
 
 
         
@@ -249,7 +250,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             for token in tokens {
                 let name = token.key as? String
                     let value = token.value as? String? ?? "nil"
-             //   logger.log("webloginlog: \(name ?? "nil"): \(value!)")
+            //   logger.log("webloginlog: \(name ?? "nil"): \(value!)")
                 }
             }
      
@@ -258,15 +259,25 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             {
                 
                 
+                var tokenType = "";
+                if let value = tokens?[AnyHashable("refresh_token_expires_in")] as? Int {
+                    tokenType = "refresh_token"
+                    
+                }else {
+                    tokenType = "id_token"
+                }
                 
-                if let value = tokens?[AnyHashable("refresh_token")] as? String {
-                    if let refreshToken = loginManager.ssoTokens?["refresh_token"]{
-                        let signedToken = signToken(token: refreshToken as! String, loginManager: loginManager)
-                        self.signedRefreshToken = signedToken
+                if let value = tokens?[AnyHashable(tokenType)] as? String {
+                    if let tokenToSign = loginManager.ssoTokens?[tokenType]{
+                        let signedToken = signToken(token: tokenToSign as! String, tokenType: tokenType, loginManager: loginManager)
+                        self.signedTokenToSend = signedToken
                     }
                 }
                 
-                           }
+                
+                
+                
+                }
         }
     
         
@@ -309,12 +320,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
            }
         if let url = url {
             var request = URLRequest(url: url)
-            let cookies = getCookies()
+            //let cookies = getCookies()
       
 
-            if let signedRefreshToken {
+            if let signedTokenToSend {
                 logger.debug("webloginlog: Signed token being sent to Keycloak")
-                request.setValue("Bearer \(signedRefreshToken)", forHTTPHeaderField: "Platform-SSO-Authorization")
+                request.setValue("Bearer \(signedTokenToSend)", forHTTPHeaderField: "Platform-SSO-Authorization")
             }
             request.httpShouldHandleCookies = true
             
@@ -347,14 +358,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
 
                     if code != nil {
                         hasCode = true
-                        /*
-                        self.isMainViewHidden = true
-                        self.view.isHidden = true
-                        //self.webView.isHidden = true
-                        self.view.needsLayout = false
-                        self.view.layoutSubtreeIfNeeded()
-                         */
-                        showProcessingOverlay()
+               
                         
                         self.authorizationRequest?.complete()
                         
@@ -547,10 +551,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             // Extract cookies
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
                
+                
                 let headers: [String:String] = [
                     "Location": webViewURL.absoluteString,
                     "Set-Cookie": self.combineCookies(cookies: cookies)
                 ]
+                 
                 
                 
                     if let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil, headerFields: headers) {
@@ -667,7 +673,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             logger.log("webloginlog: Page starting with \(loadedURL) has been loaded.")
         }
         
-        
+
         let isRequiredAction = webViewURL.absoluteString.starts(with: baseURL) && webView.url?.relativePath.contains("/login-actions") == true
         logger.log("webloginlog: this is a required action: \(isRequiredAction)")
             
@@ -687,7 +693,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 logger.debug("webloginlog: the form has a password field: \(hasPasswordField)")
             
                 
-                if (self.saml == false && hasPasswordField == true) || (self.saml == true && is_post != true && hasPasswordField == true || isRequiredAction == true) {
+                if (self.saml == false && hasPasswordField == true) || (self.saml == true && is_post != true && hasPasswordField == true) || (isRequiredAction == true && is_post != true) {
                     
                   // DispatchQueue.main.async {
                         if let win = self.view.window {
@@ -701,6 +707,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                         self.isMainViewHidden = false
                         // Don't forget to call layoutIfNeeded() when you messing with the constraints
                        // self.cancelButton.isHidden = false
+                    self.view.alphaValue = 1.0
+                    self.view.window?.isOpaque = true
                         self.view.needsLayout = true
                     self.webView.isHidden = false
                            // Force redraw
@@ -800,6 +808,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             self.isMainViewHidden = false
                     // Don't forget to call layoutIfNeeded() when you messing with the constraints
            // self.cancelButton.isHidden = false
+            self.view.alphaValue = 1.0
+            self.view.window?.isOpaque = true
+            
             self.view.needsLayout = true
                self.view.layoutSubtreeIfNeeded()
           
@@ -827,14 +838,14 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let tokenEndpointURL = URL(string: baseURL+"/psso/token")!
         let jwksEndpointURL = URL(string: baseURL+"/protocol/openid-connect/certs")!
         
-
+        
         let config = ASAuthorizationProviderExtensionLoginConfiguration(
             clientID: clientID,
             issuer: issuer,
             tokenEndpointURL: tokenEndpointURL,
             jwksEndpointURL: jwksEndpointURL,
             audience: audience,
-    
+            
         )
         
         if let nonceEndpointURL = URL(string: baseURL+"/psso/nonce") {
@@ -849,7 +860,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         return config
     }
-
+    
     func beginUserRegistration(
         loginManager: ASAuthorizationProviderExtensionLoginManager,
         userName: String?,
@@ -858,52 +869,54 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         completion: @escaping (ASAuthorizationProviderExtensionRegistrationResult) -> Void
     ){
         
-    
+        
         logger.debug("webloginlog: is device registered? \(loginManager.isDeviceRegistered)")
         logger.info("webloginlog: Starting user registration")
-            RegistrationState.shared.loginManager = loginManager
-            RegistrationState.shared.registrationCompletion = completion
-            RegistrationState.shared.isRegistrationInProgress = true
-            RegistrationState.shared.registrationType = "user"
-            let token = RegistrationState.shared.accessToken
+        RegistrationState.shared.loginManager = loginManager
+        RegistrationState.shared.registrationCompletion = completion
+        RegistrationState.shared.isRegistrationInProgress = true
+        RegistrationState.shared.registrationType = "user"
+        let token = RegistrationState.shared.accessToken
         
-            if token != nil {
-                logger.debug("webloginlog: user has token. Proceeding to user registration")
-                registerUser(accessToken: token!)
-                
-            }else {
-                
-                self.isDeviceRegistrationFlow = true
-                self.isMainViewHidden = false
-                if let win = self.view.window {
-                    win.makeKeyAndOrderFront(nil)
-                    // set desired content size if needed
-                    win.setContentSize(NSMakeSize(700, 560))
-                }
-                
-                webView.navigationDelegate=self
-                webView.configuration.allowsInlinePredictions = true
-                self.isMainViewHidden = false
-                // Don't forget to call layoutIfNeeded() when you messing with the constraints
-                // self.cancelButton.isHidden = false
-                self.view.needsLayout = true
-                self.view.layoutSubtreeIfNeeded()
-                
-                // Force redraw
-                self.view.displayIfNeeded()
-                loginManager.presentRegistrationViewController{
-                    error in
-                    if let error = error {
-                        logger.error("webloginlog: \(error)")
-                        completion(.failed)
-                        return
-                        
-                    }
-                    
-                    self.idpLogin()
-                    
-                }
+        if token != nil {
+            logger.debug("webloginlog: user has token. Proceeding to user registration")
+            registerUser(accessToken: token!)
+            
+        }else {
+            
+            self.isDeviceRegistrationFlow = true
+            self.isMainViewHidden = false
+            if let win = self.view.window {
+                win.makeKeyAndOrderFront(nil)
+                // set desired content size if needed
+                win.setContentSize(NSMakeSize(700, 560))
             }
+            
+            webView.navigationDelegate=self
+            webView.configuration.allowsInlinePredictions = true
+            self.isMainViewHidden = false
+            // Don't forget to call layoutIfNeeded() when you messing with the constraints
+            // self.cancelButton.isHidden = false
+            self.view.alphaValue = 1.0
+            self.view.window?.isOpaque = true
+            self.view.needsLayout = true
+            self.view.layoutSubtreeIfNeeded()
+            
+            // Force redraw
+            self.view.displayIfNeeded()
+            loginManager.presentRegistrationViewController{
+                error in
+                if let error = error {
+                    logger.error("webloginlog: \(error)")
+                    completion(.failed)
+                    return
+                    
+                }
+                
+                self.idpLogin()
+                
+            }
+        }
         
     }
     
@@ -933,6 +946,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         self.isMainViewHidden = false
         // Don't forget to call layoutIfNeeded() when you messing with the constraints
         // self.cancelButton.isHidden = false
+        self.view.alphaValue = 1.0
+        self.view.window?.isOpaque = true
         self.view.needsLayout = true
         self.view.layoutSubtreeIfNeeded()
         
@@ -941,41 +956,41 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         loginManager.presentRegistrationViewController {
             result in
-  
             
-           self.idpLogin()
             
-           // completion(.userInterfaceRequired)
-                       
-        
-        
+            self.idpLogin()
+            
+            // completion(.userInterfaceRequired)
+            
+            
+            
         }
-       
-    }
         
+    }
+    
     func idpLogin() {
         logger.debug("webloginlog: Starting IdP login")
-
+        
         RegistrationState.shared.accessToken = nil
         guard let baseURL = self.mdmConfig?.baseURL,
               let clientID = self.mdmConfig?.clientID else {
             logger.error("Missing MDM baseURL or clientID")
             return
         }
-
+        
         // Create PKCE code verifier and challenge
         let verifier = randomString(length: 64)
         let challenge = sha256Base64URL(verifier)
-
+        
         // Store the verifier to use later when exchanging the code for a token
         RegistrationState.shared.pkceVerifier = verifier
-
+        
         // Random state for anti-CSRF
         let state = UUID().uuidString
-
+        
         // Build URL components
         var components = URLComponents(string: "\(baseURL)/protocol/openid-connect/auth")!
-
+        
         components.queryItems = [
             URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "response_type", value: "code"),
@@ -985,29 +1000,29 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             URLQueryItem(name: "code_challenge", value: challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             // Optional extras:
- 
+            
             URLQueryItem(name: "prompt", value: "login")
         ]
-
+        
         guard let authURL = components.url else {
             logger.error("Failed to construct Keycloak auth URL")
             return
         }
-
+        
         logger.debug("webloginlog: Presenting login page: \(authURL.absoluteString)")
-
+        
         DispatchQueue.main.async {
             self.webView.navigationDelegate = self
-            self.isMainViewHidden = false 
+            self.isMainViewHidden = false
             self.webView.load(URLRequest(url: authURL))
         }
     }
-
+    
     func randomString(length: Int) -> String {
         let characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
         return String((0..<length).compactMap { _ in characters.randomElement() })
     }
-
+    
     func sha256Base64URL(_ input: String) -> String {
         let data = Data(input.utf8)
         let hash = SHA256.hash(data: data)
@@ -1018,11 +1033,11 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
     }
-
+    
     
     func registerDevice(accessToken: String, userName: String){
         guard let completion = RegistrationState.shared.registrationCompletion, let loginManager = RegistrationState.shared.loginManager
-                else {
+        else {
             logger.error("webloginlog: No loginManager and/or completion handler saved for device registration. Aborting.")
             return }
         RegistrationState.shared.accessToken = accessToken
@@ -1055,13 +1070,13 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         let signingKeyB64 = signingKeyData.base64EncodedString(options: [])
         let encryptionKeyB64 = encryptionKeyData.base64EncodedString(options: [])
-
+        
         let signKeyId = computeKid(from: signingPublicKey)
         let encKeyId = computeKid(from: encryptionPublicKey)
         
         
         let baseURL = mdmConfig?.baseURL
-     
+        
         
         do {
             let config = configuration()
@@ -1073,7 +1088,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             let token = config.tokenEndpointURL.absoluteString
             logger.error("webloginlog: Failed to save the configuration \(error). Token URL: \(token)")
         }
-         
+        
         var nonce = nil as UUID?
         Task {
             do {
@@ -1109,12 +1124,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 return data.base64EncodedString(options: [])
             }
             
-                   
+            
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue(clientRequestId, forHTTPHeaderField: "client-request-id")
-
+            
             let params = [
                 "DeviceSigningKey": signingKeyB64,
                 "DeviceEncryptionKey": encryptionKeyB64,
@@ -1123,15 +1138,15 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 "nonce" : nonce!.uuidString.lowercased(),
                 "attestation" : attestationB64,
                 "accessToken" : accessToken
+                
+            ]
             
-        ]
-
             let jsonBody = try JSONSerialization.data(withJSONObject: params, options: [])
             request.httpBody = jsonBody
             
             let UrlString = url.absoluteString
             logger.debug("webloginlog: Sending registration to \(UrlString)")
-
+            
             URLSession.shared.dataTask(with: request) { data, response, error in
                 if let httpResponse = response as? HTTPURLResponse,
                    (200...299).contains(httpResponse.statusCode) || httpResponse.statusCode == 409 {
@@ -1148,7 +1163,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                     return
                 }
             }.resume()
-        
+            
         }
         
     }
@@ -1160,18 +1175,18 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         loginManager.resetUserSecureEnclaveKey()
         guard let userKey = loginManager.key(for: .userSecureEnclaveKey)
-            else {
-                logger.error("webloginlog: Failed to get user key.")
-                completion(.failed)
-                return
+        else {
+            logger.error("webloginlog: Failed to get user key.")
+            completion(.failed)
+            return
         }
         guard let userName = RegistrationState.shared.idpUsername else {
-             logger.error("webloginlog: No username found.")
-             completion(.failed)
-             return
-         }
+            logger.error("webloginlog: No username found.")
+            completion(.failed)
+            return
+        }
         
-    
+        
         logger.log("webloginlog: User being registered is: \(userName)")
         
         
@@ -1187,18 +1202,18 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let userKeyData = SecKeyCopyExternalRepresentation(userPublicKey, nil)! as Data
         let userKeyB64 = userKeyData.base64EncodedString(options: [])
         config.loginUserName = userName
-         
+        
         logger.debug("webloginlog: username registered from idp is \(userName)")
-      
+        
         do {
             try loginManager.saveUserLoginConfiguration(config)
-
-       }catch{
-       
-           logger.error("webloginlog: Failed to save the configuration \(error).")
-           completion(.failed)
-       }
-
+            
+        }catch{
+            
+            logger.error("webloginlog: Failed to save the configuration \(error).")
+            completion(.failed)
+        }
+        
         var nonce = nil as UUID?
         let clientRequestId = UUID().uuidString
         Task {
@@ -1234,27 +1249,27 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 completion(.failed)
                 return
             }
-               
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.setValue(clientRequestId, forHTTPHeaderField: "client-request-id")
-
-                let params = [
-                    "userKey": userKeyB64,
-                    "userKeyId": userKeyId,
-                    "nonce" : nonce!.uuidString.lowercased(),
-                    "attestation" : attestationB64,
-                    "accessToken" : accessToken
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(clientRequestId, forHTTPHeaderField: "client-request-id")
+            
+            let params = [
+                "userKey": userKeyB64,
+                "userKeyId": userKeyId,
+                "nonce" : nonce!.uuidString.lowercased(),
+                "attestation" : attestationB64,
+                "accessToken" : accessToken
             ]
-
-        let jsonBody = try JSONSerialization.data(withJSONObject: params, options: [])
-        request.httpBody = jsonBody
-
-        
+            
+            let jsonBody = try JSONSerialization.data(withJSONObject: params, options: [])
+            request.httpBody = jsonBody
+            
+            
             let UrlString = url.absoluteString
             logger.debug("webloginlog: Sending user registration to \(UrlString)")
-
+            
             URLSession.shared.dataTask(with: request) { data, response, error in
                 if let httpResponse = response as? HTTPURLResponse,
                    (200...299).contains(httpResponse.statusCode) || httpResponse.statusCode == 409 {
@@ -1271,7 +1286,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                     return
                 }
             }.resume()
-
+            
             
             
         }
@@ -1280,7 +1295,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     }
     
     func registrationDidComplete() {
-       
+        
         logger.debug("webloginlog: Registration Did complete done.")
         
     }
@@ -1298,6 +1313,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let prefs = CFPreferencesCopyAppValue(key as CFString, domain as CFString)
         return prefs as? T
     }
+    
 }
+
 
 

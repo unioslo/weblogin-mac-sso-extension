@@ -32,91 +32,131 @@ extension AuthenticationViewController: WKScriptMessageHandler {
     
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
-
-        logger.log("webloginlog: Got a JS message.")
+        
         guard message.name == "pssoStepUp" else { return }
+        logger.log("webloginlog: Got a JS message.")
+        
         guard let body = message.body as? [String: Any] else { return }
-
+        
         if let type = body["type"] as? String, type == "getSignedToken" {
             
-       
+            
             
             
             handleStepUpRequest{
                 error in
-                    if let error = error {
-                        print("Reauthentication failed: \(error)")
-                        return
-                    }
-                DispatchQueue.main.async {
-                      
-                    let tokens = self.loginManager?.ssoTokens
-                    if let loginManager = self.loginManager, let value = tokens?[AnyHashable("refresh_token")] as? String {
-                    if let refreshToken = tokens?["refresh_token"]{
-                        let signedToken = self.signToken(token: refreshToken as! String, loginManager: loginManager)
-                        self.signedRefreshToken = signedToken
-                        self.sendSignedTokenToJS(self.signedRefreshToken ?? "none");
-                        
-                    
-                    }
-                    
-                        
-                    }
-                }
-                
-        }
-    }
-
-    func handleStepUpRequest(completion: @escaping ((any Error)?) -> Void) {
-        // Perform the platform SSO reauthentication logic...
-        // Then produce your new signed token.
-
-        Task {
-            let ctx = LAContext()
- 
-            let localizedReason = String(localized: "authenticate you")
-            
-            ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localizedReason) { (success, error) in
-                logger.log("webloginlog: User asked for reauthentication. Success: \(success)")
-                
-                if success != true {
-                    logger.log("webloginlog: User didn't approve login. Returning.")
-                   // self.authorizationRequest?.cancel()
-                    self.sendSignedTokenToJS( "none");
+                if let error = error {
+                    print("Reauthentication failed: \(error)")
                     return
+                }
+                DispatchQueue.main.async {
+                    logger.log("webloginlog: Sending signed token to the IdP via javascript")
+                
+                    let tokens = self.loginManager?.ssoTokens
+                    var tokenType = "";
+                    if let value = tokens?[AnyHashable("refresh_token_expires_in")] as? Int {
+                        tokenType = "refresh_token"
+                        
+                    }else {
+                        tokenType = "id_token"
+                    }
                     
+                    
+                    if let loginManager = self.loginManager, let value = tokens?[AnyHashable(tokenType)] as? String {
+                        if let token = tokens?[tokenType]{
+                            let signedToken = self.signToken(token: token as! String, tokenType: tokenType, loginManager: loginManager)
+                            self.signedTokenToSend = signedToken
+                            self.sendSignedTokenToJS(self.signedTokenToSend ?? "none");
+                            
+                            
+                        }
+                        
+                        
+                    }
                 }
                 
+            }
+        }
+        
+        func handleStepUpRequest(completion: @escaping ((any Error)?) -> Void) {
+            // Perform the platform SSO reauthentication logic...
+            // Then produce your new signed token.
+            
+            // Make sure UI changes happen on main thread
+            dumpActivationState("label")
+            self.view.isHidden = true
+            self.view.window?.makeKeyAndOrderFront(nil)
+            self.view.window?.setContentSize(NSMakeSize(10,10))
           
+                self.view.window?.isOpaque = false
+            self.view.window?.backgroundColor = .clear
+            // Make entire view controller contents transparent
+            self.view.layer?.backgroundColor = NSColor.clear.cgColor
+            self.view.alphaValue = 0.0
+            self.view.wantsLayer = true
+            self.isMainViewHidden = false
+              
+               // self.cancelButton.isHidden = false
+                self.view.needsLayout = true
+            self.webView.isHidden = false
+                   // Force redraw
+                   self.view.displayIfNeeded()
+                 self.view.layoutSubtreeIfNeeded()
+            
+            
+            Task {
+                let ctx = LAContext()
                 
-                self.loginManager?.userNeedsReauthentication{ error in
+                let localizedReason = String(localized: "authenticate you")
+                view.window?.makeKeyAndOrderFront(self)
+                ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localizedReason) {   (success, error) in
+                    logger.log("webloginlog: User asked for reauthentication. Success: \(success)")
                     
-                    if error != nil {
-                        DispatchQueue.main.async {
-                            self.sendSignedTokenToJS("none")
-                            completion(error)
+                    if success != true {
+                        logger.log("webloginlog: User didn't approve login. Returning.")
+                        // self.authorizationRequest?.cancel()
+                        
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        
+                            self.sendSignedTokenToJS( "none");
                             
                         }
                         return
                     }
                     
-                completion(nil)
-                }
+             
+                    
+                    self.loginManager?.userNeedsReauthentication{ error in
+                
+                        
+                        if error != nil {
+                            
+                            DispatchQueue.main.async {
+
+                                
+                                self.sendSignedTokenToJS("none")
+                                completion(error)
+                                
+                            }
+                            return
+                        }
+                        logger.info( "webloginlog: User successfully reauthenticated. Proceeding with login.")
+                        completion(nil)
+                    }
                     
                 }
-            
             }
             
             
         }
         
     }
-
+    
     func sendSignedTokenToJS(_ signedToken: String) {
         // Escape quotes and backslashes for safe JS embedding
         
         let js = "pssoSigned('\(signedToken)');"
-
+        
         DispatchQueue.main.async {
             self.webView.evaluateJavaScript(js) { _, error in
                 if let error = error {
@@ -125,5 +165,67 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             }
         }
     }
+    func logWindowState(_ message: String) {
+        DispatchQueue.main.async {
+            let key = NSApp.keyWindow
+            let main = self.view.window
+            logger.log("webloginlog: STATE \(message): keyWindow=\(String(describing: key))  isKey? \(key?.isKeyWindow ?? false)  visible? \(key?.isVisible ?? false)  self.view.window=\(String(describing: main))")
+        }
+    }
+    private func dumpWindowLifecycle(_ label: String) {
+        DispatchQueue.main.async {
+            let now = ISO8601DateFormatter().string(from: Date())
+            let frontApp = NSWorkspace.shared.frontmostApplication
+            let frontBundle = frontApp?.bundleIdentifier ?? "nil"
+            let keyWin = NSApp.keyWindow
+            let mainWin = self.view.window
+            logger.log("webloginlog: WL \(now) \(label): frontApp=\(frontBundle) frontAppName=\(frontApp?.localizedName ?? "nil") keyWindow=\(String(describing: keyWin)) isKey=\(keyWin?.isKeyWindow ?? false) keyVisible=\(keyWin?.isVisible ?? false) selfWindow=\(String(describing: mainWin)) selfVisible=\(mainWin?.isVisible ?? false) selfIsKey=\(mainWin?.isKeyWindow ?? false)")
+        }
+    }
+    // Call this once in viewDidLoad() to start logging
+     func enableWindowLifecycleLogging() {
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { note in
+            if let w = note.object as? NSWindow {
+                logger.log("webloginlog: WL-NOTIF: didBecomeKey -> \(w) visible:\(w.isVisible) alpha:\(w.alphaValue)")
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: nil, queue: .main
+        ) { note in
+            if let w = note.object as? NSWindow {
+                logger.log("webloginlog: WL-NOTIF: didResignKey -> \(w) visible:\(w.isVisible) alpha:\(w.alphaValue)")
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeMainNotification, object: nil, queue: .main
+        ) { note in
+            if let w = note.object as? NSWindow {
+                logger.log("webloginlog: didBecomeMain -> \(w) visible:\(w.isVisible) alpha:\(w.alphaValue)")
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignMainNotification, object: nil, queue: .main
+        ) { note in
+            if let w = note.object as? NSWindow {
+                logger.debug("webloginlog: WL-NOTIF: didResignMain -> \(w) visible:\(w.isVisible) alpha:\(w.alphaValue)")
+            }
+        }
+    }
 
+    // Call this helper to dump state whenever you want
+    private func dumpActivationState(_ label: String) {
+        DispatchQueue.main.async {
+            let now = ISO8601DateFormatter().string(from: Date())
+            let front = NSWorkspace.shared.frontmostApplication
+            let key = NSApp.keyWindow
+            let main = NSApp.mainWindow
+            let selfWin = self.view.window
+            logger.debug("webloginlog: WL-STATE \(now) \(label): frontApp=\(front?.bundleIdentifier ?? "nil") frontName=\(front?.localizedName ?? "nil") keyWindow=\(String(describing: key)) keyIsKey=\(key?.isKeyWindow ?? false) mainWindow=\(String(describing: main)) selfWindow=\(String(describing: selfWin)) selfIsVisible=\(selfWin?.isVisible ?? false) selfIsKey=\(selfWin?.isKeyWindow ?? false)")
+        }
+    }
+
+    
+    
 }
