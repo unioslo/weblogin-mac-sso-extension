@@ -350,15 +350,16 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         if (RegistrationState.shared.isRegistrationInProgress){
             logger.info( "webloginlog: Registration login flow.")
             if webViewURL.absoluteString.starts(with: "weblogin-sso://idp-login-redirect"){
-            
+                
                 var hasCode = false
                 if let components = URLComponents(url: webViewURL, resolvingAgainstBaseURL: false)  {
                     let code =  components.queryItems?.first(where: { $0.name == "code" })?.value
            
 
                     if code != nil {
+                        
                         hasCode = true
-               
+                        showProcessingOverlay()
                         
                         self.authorizationRequest?.complete()
                         
