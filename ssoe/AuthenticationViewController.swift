@@ -828,8 +828,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     func configuration() -> ASAuthorizationProviderExtensionLoginConfiguration {
         
         logger.debug("webloginlog: getting configuration")
-        let domain = "no.uio.WebloginSSO.ssoe"
-        
+        let domain = Bundle.main.bundleIdentifier ?? "no.uio.webloginSSO.ssoe"
+
         let clientID = CFPreferencesCopyAppValue("ClientID" as CFString, domain as CFString) as? String ?? "fallback-client"
         let baseURL  = CFPreferencesCopyAppValue("BaseURL" as CFString, domain as CFString) as? String ?? "fallback-baseURL"
         let issuer = CFPreferencesCopyAppValue("Issuer" as CFString, domain as CFString) as? String ?? "fallback-issuer"
