@@ -223,7 +223,9 @@ extension AuthenticationViewController {
     }
     
     func loadMDMConfig() {
-        let domain = "no.uio.WebloginSSO.ssoe"
+        
+        let domain = Bundle.main.bundleIdentifier ?? "no.uio.WebloginSSO.ssoe"
+
         
         guard let baseURL = stringFromManagedPreferences(forKey: "BaseURL", inDomain: domain) else {
             logger.error("webloginlog: BaseURL not found in MDM config")
