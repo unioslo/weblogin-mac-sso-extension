@@ -22,6 +22,7 @@ extension AuthenticationViewController {
     
     
     
+    
     struct Nonce: Decodable {
         let nonce: UUID
     }

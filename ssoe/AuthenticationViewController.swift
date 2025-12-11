@@ -69,7 +69,8 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
         var baseURL = ""
         var loginManager: ASAuthorizationProviderExtensionLoginManager?
         var mdmConfig: (baseURL: String, issuer: String, clientID: String, audience: String)?
-
+        var isRequiredAction: Bool = false
+        var postSaml:Bool = false
 
     
        @IBOutlet weak var webView: WKWebView!
@@ -89,6 +90,11 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
     override func viewDidLoad(){
         super.viewDidLoad()
         loadMDMConfig()
+        
+   
+        
+  
+        
         logger.log("webloginlog: viewDidLoad")
         guard let baseURL = self.mdmConfig?.baseURL else {
             return
@@ -203,7 +209,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         }
         
         let baseURL = URL(string: mdmConfig.baseURL)!
-        let authorizationURLs = [ "\(baseURL)/protocol/openid-connect/auth", "\(baseURL)/protocol/saml?SAMLRequest"]
+        let authorizationURLs = [ "\(baseURL)/protocol/openid-connect/auth", "\(baseURL)/protocol/saml"]
         
         var startAuthorization = false
       
@@ -297,9 +303,45 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             logger.debug("webloginlog: beginAuthorization. The request url starts with: \(authURL)")
         }
         
+        var newRequest = URLRequest(url: request.url)
+        let httpBody = request.httpBody
+        
+        if let httpBodyString = String(data: httpBody, encoding: .utf8)  {
+          
+            
+            if httpBodyString.starts(with: "SAMLRequest"){
+               
+                
+                self.kCallbackURLString = referer
+                self.postSaml = true
+                self.saml = true
+                
+                logger.debug("webloginlog: beginAuthorization. This is an initial SAML POST")
+                /*
+                Task{
+                    await handleInitialSamlPost(request: request, bodyString: httpBodyString)
 
+                }*/
+                
+                
+                newRequest.httpMethod = "POST"
+                newRequest.httpBody = request.httpBody
+                newRequest.allHTTPHeaderFields = request.httpHeaders
+               
+                 
+                
+            }
+       
+
+        }
         
+        // return if it is a saml endpoint but not a saml request:
+        if request.url.absoluteString.starts(with:"\(baseURL)/protocol/saml" ) == true && request.url.absoluteString.contains("SAMLRequest") == false && self.postSaml == false {
+            authorizationRequest?.doNotHandle()
+            return
+        }
         
+                
         request.presentAuthorizationViewController(completion: { (success, error) in
             if error != nil {
                 request.complete(error: error!)
@@ -321,7 +363,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         if let url = url {
             var request = URLRequest(url: url)
             //let cookies = getCookies()
-      
+            if (self.postSaml){
+                request = newRequest
+            }
 
             if let signedTokenToSend {
                 logger.debug("webloginlog: Signed token being sent to Keycloak")
@@ -345,8 +389,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             decisionHandler(.allow)
             return
         }
-        
-                
+
+     
         if (RegistrationState.shared.isRegistrationInProgress){
             logger.info( "webloginlog: Registration login flow.")
             if webViewURL.absoluteString.starts(with: "weblogin-sso://idp-login-redirect"){
@@ -433,15 +477,21 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         // the referer. When the IDP returns to the referer
         // and a POST is done, here's the SAML request being posted.
         if (self.saml){
-            
+            logger.debug( "webloginlog: Handling SAML request")
             // POST checks
             var containsSAMLResponse: Bool = false
             var httpBody: String? = ""
             if let httpBodyData = request.httpBody {
                 httpBody = String(data: httpBodyData, encoding: .utf8)
+            
                 containsSAMLResponse = httpBody!.contains("SAMLResponse")
-                
+                logger.debug("webloginlog: Contains SAML Response: \(containsSAMLResponse)")
+
             }
+            
+            
+        
+         
             
             // Redirect checks
             let idpURL = url.absoluteString.starts(with: baseURL)
@@ -450,7 +500,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             
             // REDIRECT
             if idpURL == true && samlResponse != nil {
-                logger.log("webloginlog: This is a SAML Redirect flow.")
+                logger.debug("webloginlog: This is a SAML Redirect flow.")
                 decisionHandler(.cancel)
                 webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
                     self.postHeaders = [
@@ -469,10 +519,13 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 }
                 return
             }
+            let httpMethod = request.httpMethod
+            logger.debug("webloginlog: HttpMethod: \(httpMethod)")
+       
             
             // POST
             if (request.httpMethod == "POST" && idpURL == true && containsSAMLResponse == true ){
-                        logger.log("webloginlog: this is a SAML POST request.")
+                    
                         is_post = true
                         decisionHandler(.cancel)
                         var html = """
@@ -544,19 +597,24 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             logger.debug("webloginlog: Intercepted redirect to callback. Send it to the browser." )
 
             // Stop navigation
-           
+            if (self.saml == true){
+                decisionHandler(.allow)
+                return
+            }
+            
             decisionHandler(.cancel)
+           
             
      
             
             // Extract cookies
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
                
+                    let headers: [String:String]  = [
+                        "Location": webViewURL.absoluteString,
+                        "Set-Cookie": self.combineCookies(cookies: cookies)
+                    ]
                 
-                let headers: [String:String] = [
-                    "Location": webViewURL.absoluteString,
-                    "Set-Cookie": self.combineCookies(cookies: cookies)
-                ]
                  
                 
                 
@@ -589,8 +647,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             return
         }
         
-        
-        
+    
         
         if let redirectURL = webViewURL.baseURL?.absoluteString {
             logger.info("webloginlog: Entering redirection to url starting with: \(redirectURL)")
@@ -663,7 +720,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             return
         }
       
-    
+
         
         guard   let webViewURL = webView.url else {
             logger.error("webloginlog: I don't have an url, or the webview doesn't have one")
@@ -680,6 +737,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             
         // Run a minimal DOM probe for a visible password input
         
+        if webView.url?.relativePath.contains("/login-actions/required-action") == true {
+            self.isRequiredAction = true
+        }
+        
+        
+        
         
             // Run a minimal DOM probe for a visible password input
             let js = "!!document.querySelector('input[type=\"password\"]')"
@@ -693,9 +756,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 let hasPasswordField = (result as? Bool) ?? false
                 logger.debug("webloginlog: the form has a password field: \(hasPasswordField)")
             
-                
-                if (self.saml == false && hasPasswordField == true) || (self.saml == true && is_post != true && hasPasswordField == true) || (isRequiredAction == true && is_post != true) {
+                logger.debug("webloginlog: is post \(self.is_post)")
+                if ((self.saml == false && hasPasswordField == true) || (self.saml == true && is_post != true && hasPasswordField == true) || (isRequiredAction == true && is_post != true)) &&  !self.postSaml {
                     
+                    self.postSaml = false
                   // DispatchQueue.main.async {
                         if let win = self.view.window {
                                    win.makeKeyAndOrderFront(nil)
@@ -722,7 +786,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                    
                     logger.debug("webloginlog: Detected interactive login on first response. Showing UI immediately.")
                 } else {
-                    //showWindowIfDelay()
+                    showWindowIfDelay()
                     logger.debug("webloginlog: No password field on first response; keeping UI hidden for SSO.")
                 }
             }
@@ -836,9 +900,13 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let issuer = CFPreferencesCopyAppValue("Issuer" as CFString, domain as CFString) as? String ?? "fallback-issuer"
         let audience = CFPreferencesCopyAppValue("Audience" as CFString, domain as CFString) as? String ?? "fallback-audience"
         
+        
         let tokenEndpointURL = URL(string: baseURL+"/psso/token")!
         let jwksEndpointURL = URL(string: baseURL+"/protocol/openid-connect/certs")!
         
+        
+      
+      
         
         let config = ASAuthorizationProviderExtensionLoginConfiguration(
             clientID: clientID,
