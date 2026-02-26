@@ -745,45 +745,63 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         
         
             // Run a minimal DOM probe for a visible password input
-            let js = "!!document.querySelector('input[type=\"password\"]')"
+        let js = """
+        (function() {
+            return {
+                hasPasswordField: !!document.querySelector('input[type="password"]'),
+                hasReauthenticate: !!document.querySelector('#reauthenticate')
+            };
+        })();
+        """
             
-            webView.evaluateJavaScript(js) { [weak self] result, error in
-                guard let self = self else { return }
-                if let error = error {
-                    logger.debug("webloginlog: First-response JS probe error: \(error.localizedDescription)")
-                    return
+        webView.evaluateJavaScript(js) { [weak self] result, error in
+            guard let self = self else { return }
+            if let error = error {
+                logger.debug("webloginlog: First-response JS probe error: \(error.localizedDescription)")
+                return
+            }
+            
+            if let dict = result as? [String: Any] {
+                
+                
+                let hasPasswordField = dict["hasPassword"] as? Bool ?? false
+                let hasReauthenticate = dict["hasReauthenticate"] as? Bool ?? false
+                
+                
+                if hasReauthenticate == true {
+                    return;
                 }
-                let hasPasswordField = (result as? Bool) ?? false
+                
                 logger.debug("webloginlog: the form has a password field: \(hasPasswordField)")
-            
+                
                 logger.debug("webloginlog: is post \(self.is_post)")
                 if ((self.saml == false && hasPasswordField == true) || (self.saml == true && is_post != true && hasPasswordField == true) || (isRequiredAction == true && is_post != true)) &&  !self.postSaml {
                     
                     self.postSaml = false
-                  // DispatchQueue.main.async {
-                        if let win = self.view.window {
-                                   win.makeKeyAndOrderFront(nil)
-                                   // set desired content size if needed
-                                   win.setContentSize(NSMakeSize(700, 560))
-                               }
+                    // DispatchQueue.main.async {
+                    if let win = self.view.window {
+                        win.makeKeyAndOrderFront(nil)
+                        // set desired content size if needed
+                        win.setContentSize(NSMakeSize(700, 560))
+                    }
                     self.view.window?.makeKeyAndOrderFront(nil)
                     self.view.window?.setContentSize(NSMakeSize(700,560))
-                       self.hideProcessingOverlay()
-                        self.isMainViewHidden = false
-                        // Don't forget to call layoutIfNeeded() when you messing with the constraints
-                       // self.cancelButton.isHidden = false
+                    self.hideProcessingOverlay()
+                    self.isMainViewHidden = false
+                    // Don't forget to call layoutIfNeeded() when you messing with the constraints
+                    // self.cancelButton.isHidden = false
                     self.view.alphaValue = 1.0
                     self.view.window?.isOpaque = true
-                        self.view.needsLayout = true
+                    self.view.needsLayout = true
                     self.webView.isHidden = false
-                           // Force redraw
-                           self.view.displayIfNeeded()
+                    // Force redraw
+                    self.view.displayIfNeeded()
                     self.view.isHidden = false
                     self.view.layoutSubtreeIfNeeded()
                     //      }
                     
                     
-                   
+                    
                     logger.debug("webloginlog: Detected interactive login on first response. Showing UI immediately.")
                 } else {
                     showWindowIfDelay()
@@ -791,7 +809,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 }
             }
             
-            
+        }
        // }
         
         
@@ -1023,16 +1041,22 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         // Force redraw
         self.view.displayIfNeeded()
         
-        loginManager.presentRegistrationViewController {
-            result in
+        if loginManager.registrationToken == nil {
+            logger.log("Device registration started using User Login.")
+            loginManager.presentRegistrationViewController {
+                result in
             
-            
-            self.idpLogin()
-            
-            // completion(.userInterfaceRequired)
-            
-            
-            
+                
+                self.idpLogin()
+                
+                // completion(.userInterfaceRequired)
+                
+                
+                
+            }
+        }else {
+            logger.log("webloginlog: Device Registration started using Registration Token.")
+            registerDevice(accessToken: "", userName: "")
         }
         
     }
@@ -1109,9 +1133,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         else {
             logger.error("webloginlog: No loginManager and/or completion handler saved for device registration. Aborting.")
             return }
-        RegistrationState.shared.accessToken = accessToken
-        RegistrationState.shared.idpUsername = userName
-        
+        if loginManager.registrationToken == nil {
+            RegistrationState.shared.accessToken = accessToken
+            RegistrationState.shared.idpUsername = userName
+        }
         let clientRequestId = UUID().uuidString
         do {
             loginManager.resetDeviceKeys()
@@ -1199,16 +1224,22 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue(clientRequestId, forHTTPHeaderField: "client-request-id")
             
-            let params = [
+            var params = [
                 "DeviceSigningKey": signingKeyB64,
                 "DeviceEncryptionKey": encryptionKeyB64,
                 "SignKeyID": signKeyId,
                 "EncKeyID": encKeyId,
                 "nonce" : nonce!.uuidString.lowercased(),
                 "attestation" : attestationB64,
-                "accessToken" : accessToken
-                
             ]
+            
+            if loginManager.registrationToken != nil {
+                params["registrationToken"] = loginManager.registrationToken
+                
+            } else {
+                params["accessToken"] = accessToken
+            }
+            
             
             let jsonBody = try JSONSerialization.data(withJSONObject: params, options: [])
             request.httpBody = jsonBody
@@ -1219,6 +1250,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             URLSession.shared.dataTask(with: request) { data, response, error in
                 if let httpResponse = response as? HTTPURLResponse,
                    (200...299).contains(httpResponse.statusCode) || httpResponse.statusCode == 409 {
+                    logger.log("webloginlog: Device successfully registered.")
                     completion(.success)
                     RegistrationState.shared.clear()
                     return
