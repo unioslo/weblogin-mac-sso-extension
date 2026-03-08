@@ -240,6 +240,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         }
         
         if (!startAuthorization) {
+            
             webView.configuration.userContentController.removeAllScriptMessageHandlers()
             authorizationRequest?.doNotHandle()
             return
@@ -248,9 +249,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         let loginManager = request.loginManager
         self.loginManager = loginManager
         let tokens = loginManager?.ssoTokens
-        
-        
-     
+        let clientRequestId = UUID().uuidString
+
+        Task {
 
         if let tokens {
             for token in tokens {
@@ -275,7 +276,14 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 
                 if let value = tokens?[AnyHashable(tokenType)] as? String {
                     if let tokenToSign = loginManager.ssoTokens?[tokenType]{
-                        let signedToken = signToken(token: tokenToSign as! String, tokenType: tokenType, loginManager: loginManager)
+
+                        guard let nonce = try? await self.getNonceFromIdp(clientRequestId: clientRequestId) else {
+                                logger.error("webloginlog: Failed to fetch nonce")
+                                self.authorizationRequest?.complete(error: ASAuthorizationError(.failed))
+                                return
+                            }
+                        
+                        let signedToken = signToken(token: tokenToSign as! String, tokenType: tokenType, loginManager: loginManager, nonce: nonce, clientId: clientRequestId)
                         self.signedTokenToSend = signedToken
                     }
                 }
@@ -347,35 +355,39 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 request.complete(error: error!)
             }
         })
-        if let components = URLComponents(url: url!, resolvingAgainstBaseURL: false),
-              let redirectParam = components.queryItems?.first(where: { $0.name == "redirect_uri" })?.value {
-               self.kCallbackURLString = redirectParam
-               logger.debug("webloginlog: beginAuthorization. Callback URL set to \(self.kCallbackURLString)")
-            
-     
-            
-           } else {
-               // fallback: maybe the SP uses a fixed URL
-               self.kCallbackURLString = referer
-               self.saml = true
-               logger.warning("webloginlog: No redirect_uri query param found, using referrer \(self.kCallbackURLString)")
-           }
-        if let url = url {
-            var request = URLRequest(url: url)
-            //let cookies = getCookies()
-            if (self.postSaml){
-                request = newRequest
-            }
-
-            if let signedTokenToSend {
-                logger.debug("webloginlog: Signed token being sent to Keycloak")
-                request.setValue("Bearer \(signedTokenToSend)", forHTTPHeaderField: "Platform-SSO-Authorization")
-            }
-            request.httpShouldHandleCookies = true
-            
-            self.webView.load(request)
-        }
         
+      
+            if let components = URLComponents(url: url!, resolvingAgainstBaseURL: false),
+               let redirectParam = components.queryItems?.first(where: { $0.name == "redirect_uri" })?.value {
+                self.kCallbackURLString = redirectParam
+                logger.debug("webloginlog: beginAuthorization. Callback URL set to \(self.kCallbackURLString)")
+                
+                
+                
+            } else {
+                // fallback: maybe the SP uses a fixed URL
+                self.kCallbackURLString = referer
+                self.saml = true
+                logger.warning("webloginlog: No redirect_uri query param found, using referrer \(self.kCallbackURLString)")
+            }
+            if let url = url {
+                var request = URLRequest(url: url)
+                //let cookies = getCookies()
+                if (self.postSaml){
+                    request = newRequest
+                }
+                
+                if let signedTokenToSend {
+                    logger.debug("webloginlog: Signed token being sent to Keycloak")
+                    request.setValue("Bearer \(signedTokenToSend)", forHTTPHeaderField: "Platform-SSO-Authorization")
+                    
+                }
+                request.httpShouldHandleCookies = true
+                await MainActor.run {
+                    self.webView.load(request)
+                }
+            }
+        }
     }
     
     
@@ -940,9 +952,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         }
         
         config.refreshEndpointURL = tokenEndpointURL
-        config.keyEndpointURL = URL(string: baseURL+"/psso/key")
+        config.keyEndpointURL = tokenEndpointURL;
         config.nonceResponseKeypath = "nonce"
         config.groupResponseClaimName = "groups"
+        config.audience = audience
         
         
         return config
@@ -959,6 +972,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         logger.debug("webloginlog: is device registered? \(loginManager.isDeviceRegistered)")
         logger.info("webloginlog: Starting user registration")
+        
+
+        
         RegistrationState.shared.loginManager = loginManager
         RegistrationState.shared.registrationCompletion = completion
         RegistrationState.shared.isRegistrationInProgress = true
@@ -1028,6 +1044,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             win.setContentSize(NSMakeSize(700, 560))
         }
         
+   
         webView.navigationDelegate=self
         webView.configuration.allowsInlinePredictions = true
         self.isMainViewHidden = false
@@ -1177,6 +1194,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             
             try config.setCustomLoginRequestBodyClaims( ["signKeyId": signKeyId, "encKeyId": encKeyId])
             try loginManager.saveLoginConfiguration(config)
+            let audience = config.audience
+            logger.log("webloginlog: The audience in device registration is: \(audience)")
         }catch{
             let config = configuration()
             let token = config.tokenEndpointURL.absoluteString
@@ -1274,37 +1293,21 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             logger.error("webloginlog: No Login Manager or Registration Completion")
             return }
         
-        loginManager.resetUserSecureEnclaveKey()
-        guard let userKey = loginManager.key(for: .userSecureEnclaveKey)
-        else {
-            logger.error("webloginlog: Failed to get user key.")
-            completion(.failed)
-            return
-        }
-        guard let userName = RegistrationState.shared.idpUsername else {
+        guard let userName =
+                RegistrationState.shared.idpUsername else {
             logger.error("webloginlog: No username found.")
             completion(.failed)
             return
         }
         
         
+        
+        
+        
         logger.log("webloginlog: User being registered is: \(userName)")
         
-        
-        let baseURL = mdmConfig?.baseURL
-        guard let userPublicKey = SecKeyCopyPublicKey(userKey) else {
-            logger.error("webloginlog: Can't export the public key for the user.")
-            completion(.failed)
-            return
-            
-        }
         let config = ASAuthorizationProviderExtensionUserLoginConfiguration.init(loginUserName: userName)
-        let userKeyId = computeKid(from: userPublicKey)
-        let userKeyData = SecKeyCopyExternalRepresentation(userPublicKey, nil)! as Data
-        let userKeyB64 = userKeyData.base64EncodedString(options: [])
         config.loginUserName = userName
-        
-        logger.debug("webloginlog: username registered from idp is \(userName)")
         
         do {
             try loginManager.saveUserLoginConfiguration(config)
@@ -1314,6 +1317,41 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             logger.error("webloginlog: Failed to save the configuration \(error).")
             completion(.failed)
         }
+        
+        if loginManager.authenticationMethod == .password {
+            let audience = loginManager.loginConfiguration?.audience
+            
+            logger.log("webloginlog: The audience in user registration is: \(audience as NSObject?)")
+            let userDeviceSigning = loginManager.key(for: .userDeviceSigning)
+            
+            completion(.success)
+            return
+        }
+        
+     
+        loginManager.resetUserSecureEnclaveKey()
+        guard let userKey = loginManager.key(for: .userSecureEnclaveKey) else {
+            logger.error("webloginlog: No user key found.")
+            completion(.failed)
+            return
+        }
+            let baseURL = mdmConfig?.baseURL
+            guard let userPublicKey = SecKeyCopyPublicKey(userKey) else {
+                logger.error("webloginlog: Can't export the public key for the user.")
+                completion(.failed)
+                return
+                
+            }
+    
+       
+        let userKeyId = computeKid(from: userPublicKey)
+        let userKeyData = SecKeyCopyExternalRepresentation(userPublicKey, nil)! as Data
+        let userKeyB64 = userKeyData.base64EncodedString(options: [])
+        
+        
+        logger.debug("webloginlog: username registered from idp is \(userName)")
+        
+      
         
         var nonce = nil as UUID?
         let clientRequestId = UUID().uuidString
@@ -1331,7 +1369,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             let nonceData = nonce!.uuidString.lowercased().data(using: .utf8)!
             let nonceHash = SHA256.hash(data: nonceData)
             let nonceHashData = Data(nonceHash)
-            let attestCertificate = try await loginManager.attestKey(ofType: .userSecureEnclaveKey,  clientDataHash: nonceHashData)
+            
+            
+            let keyType = loginManager.authenticationMethod == .password ? ASAuthorizationProviderExtensionKeyType.userDeviceSigning : ASAuthorizationProviderExtensionKeyType.userSecureEnclaveKey
+            
+            
+            let attestCertificate = try await loginManager.attestKey(ofType: keyType,  clientDataHash: nonceHashData)
             
             let attestationB64 = attestCertificate.compactMap { cert -> String? in
                 guard let data = SecCertificateCopyData(cert) as Data? else { return nil }
@@ -1416,6 +1459,5 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     }
     
 }
-
 
 

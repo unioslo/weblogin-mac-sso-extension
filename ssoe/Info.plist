@@ -11,5 +11,7 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).AuthenticationViewController</string>
 	</dict>
+	<key>com.apple.developer.web-browser.public-key-credential</key>
+	<true/>
 </dict>
 </plist>

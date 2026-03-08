@@ -49,35 +49,48 @@ extension AuthenticationViewController {
         }
     }
     
-    func signToken(token: String, tokenType: String, loginManager: ASAuthorizationProviderExtensionLoginManager) -> String? {
+    func signToken(token: String, tokenType: String, loginManager: ASAuthorizationProviderExtensionLoginManager, nonce: UUID, clientId: String) -> String? {
         guard let signingKey = loginManager.key(for: .sharedDeviceSigning) else {
             return nil
         }
+        
         let now = Int(Date().timeIntervalSince1970)
+        var userKeySecureEnclave : SecKey?
+        var userKey : SecKey
+        var userPublicKey : SecKey?
+        var userKid = ""
+        if loginManager.authenticationMethod == .userSecureEnclaveKey {
+           userKeySecureEnclave = loginManager.key(for: .userSecureEnclaveKey)
         
-        guard let userKey = loginManager.key(for: .userSecureEnclaveKey) else {
-            return nil
+            if userKeySecureEnclave == nil {
+                logger.error("webloginlog: no secure enclave key found.")
+                return nil
+            }
+            userKey = userKeySecureEnclave!
+            userPublicKey = SecKeyCopyPublicKey(userKey)
+            if userPublicKey != nil {
+                userKid = computeKid(from: userPublicKey!)
+            }else {
+                logger.error("webloginlog: failed to extract kid.")
+                return nil
+            }
+
+            
         }
-        
         
         guard let signingPublicKey = SecKeyCopyPublicKey(signingKey) else {
             logger.error("webloginlog: Failed to extract public keys.")
             return nil
         }
         
-        
-        guard let userPublicKey = SecKeyCopyPublicKey(userKey) else {
-            logger.error("webloginlog: Failed to extract public keys.")
-            return nil
-        }
-        
         let signKeyId = computeKid(from: signingPublicKey)
-        let userKid = computeKid(from: userPublicKey)
         
         guard let username = loginManager.userLoginConfiguration?.loginUserName else {
             logger.error("webloginlog: NO USERNAME SAVED!")
             return nil
         }
+        
+        let isSecureEnclave = loginManager.authenticationMethod == .userSecureEnclaveKey ? true : false
         
         let envelope: [String: Any] = [
             "token": token,
@@ -85,7 +98,10 @@ extension AuthenticationViewController {
             "kid": signKeyId,
             "signed_at": now,
             "username" : username,
-            "user_kid" : userKid
+            "nonce" : nonce.uuidString,
+            "user_kid" : userKid,
+            "client_id": clientId,
+            "secure_enclave" : isSecureEnclave
         ]
         do {
             let jsonData = try? JSONSerialization.data(withJSONObject: envelope, options: [])

@@ -51,7 +51,7 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                 }
                 DispatchQueue.main.async {
                     logger.log("webloginlog: Sending signed token to the IdP via javascript")
-                
+                    
                     let tokens = self.loginManager?.ssoTokens
                     var tokenType = "";
                     if let value = tokens?[AnyHashable("refresh_token_expires_in")] as? Int {
@@ -60,21 +60,28 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                     }else {
                         tokenType = "id_token"
                     }
-                    
-                    
-                    if let loginManager = self.loginManager, let value = tokens?[AnyHashable(tokenType)] as? String {
-                        if let token = tokens?[tokenType]{
-                            let signedToken = self.signToken(token: token as! String, tokenType: tokenType, loginManager: loginManager)
-                            self.signedTokenToSend = signedToken
-                            self.sendSignedTokenToJS(self.signedTokenToSend ?? "none");
-                            
+                    let clientId = UUID().uuidString
+                    Task {
+                        guard let nonce = try? await self.getNonceFromIdp(clientRequestId: clientId) else {
+                            logger.error("webloginlog: Failed to fetch nonce")
+                            return
                             
                         }
                         
-                        
+                        if let loginManager = self.loginManager, let value = tokens?[AnyHashable(tokenType)] as? String {
+                            if let token = tokens?[tokenType]{
+                                let signedToken = self.signToken(token: token as! String, tokenType: tokenType, loginManager: loginManager, nonce: nonce, clientId: clientId)
+                                self.signedTokenToSend = signedToken
+                                self.sendSignedTokenToJS(self.signedTokenToSend ?? "none");
+                                
+                                
+                            }
+                            
+                            
+                        }
                     }
+                    
                 }
-                
             }
         }
         
