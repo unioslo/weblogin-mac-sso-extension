@@ -46,10 +46,15 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             handleStepUpRequest{
                 error in
                 if let error = error {
-                    print("Reauthentication failed: \(error)")
+                    logger.log("webloginlog: Reauthentication failed: \(error)")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        self.sendSignedTokenToJS( "none");
+                    }
                     return
                 }
-                DispatchQueue.main.async {
+                
+                
+                Task { @MainActor in
                     logger.log("webloginlog: Sending signed token to the IdP via javascript")
                     
                     let tokens = self.loginManager?.ssoTokens
@@ -61,7 +66,7 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                         tokenType = "id_token"
                     }
                     let clientId = UUID().uuidString
-                    Task {
+                  
                         guard let nonce = try? await self.getNonceFromIdp(clientRequestId: clientId) else {
                             logger.error("webloginlog: Failed to fetch nonce")
                             return
@@ -81,7 +86,7 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                         }
                     }
                     
-                }
+                
             }
         }
         
@@ -90,12 +95,19 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             // Then produce your new signed token.
             
             // Make sure UI changes happen on main thread
+            
+            if loginManager?.authenticationMethod == .password {
+                    self.sendSignedTokenToJS("none")
+                 return
+                
+            }
+            
             dumpActivationState("label")
             self.view.isHidden = true
             self.view.window?.makeKeyAndOrderFront(nil)
             self.view.window?.setContentSize(NSMakeSize(10,10))
           
-                self.view.window?.isOpaque = false
+            self.view.window?.isOpaque = false
             self.view.window?.backgroundColor = .clear
             // Make entire view controller contents transparent
             self.view.layer?.backgroundColor = NSColor.clear.cgColor
@@ -103,41 +115,45 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             self.view.wantsLayer = true
             self.isMainViewHidden = false
               
-               // self.cancelButton.isHidden = false
-                self.view.needsLayout = true
+            // self.cancelButton.isHidden = false
+            self.view.needsLayout = true
             self.webView.isHidden = false
-                   // Force redraw
-                   self.view.displayIfNeeded()
-                 self.view.layoutSubtreeIfNeeded()
+            // Force redraw
+            self.view.displayIfNeeded()
+            self.view.layoutSubtreeIfNeeded()
             
             
             Task {
-                let ctx = LAContext()
-                
-                let localizedReason = String(localized: "authenticate you")
                 view.window?.makeKeyAndOrderFront(self)
-                ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localizedReason) {   (success, error) in
-                    logger.log("webloginlog: User asked for reauthentication. Success: \(success)")
+
+               
                     
-                    if success != true {
-                        logger.log("webloginlog: User didn't approve login. Returning.")
-                        // self.authorizationRequest?.cancel()
+                    let ctx = LAContext()
+                    let localizedReason = String(localized: "authenticate you")
+                    ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localizedReason) {   (success, error) in
+                        logger.log("webloginlog: User asked for reauthentication. Success: \(success)")
                         
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        
-                            self.sendSignedTokenToJS( "none");
+                        if success != true {
+                            logger.log("webloginlog: User didn't approve login. Returning.")
+                            // self.authorizationRequest?.cancel()
                             
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                
+                                self.sendSignedTokenToJS( "none");
+                                
+                            }
+                            return
                         }
-                        return
+                        
                     }
-                    
-             
-                    
+                }
+                    logger.log("webloginlog: Calling userNeedsReauthentication")
                     self.loginManager?.userNeedsReauthentication{ error in
                 
                         
                         if error != nil {
-                            
+                            logger.log("webloginlog: Error with userNeedsReauthentication")
+
                             DispatchQueue.main.async {
 
                                 
@@ -151,11 +167,11 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                         completion(nil)
                     }
                     
-                }
+                
             }
             
             
-        }
+        
         
     }
     

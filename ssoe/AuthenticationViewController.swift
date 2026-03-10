@@ -1191,11 +1191,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         do {
             let config = configuration()
-            
             try config.setCustomLoginRequestBodyClaims( ["signKeyId": signKeyId, "encKeyId": encKeyId])
             try loginManager.saveLoginConfiguration(config)
-            let audience = config.audience
-            logger.log("webloginlog: The audience in device registration is: \(audience)")
+            let savedAudience = loginManager.loginConfiguration?.audience ?? "no_audience_saved"
+           
         }catch{
             let config = configuration()
             let token = config.tokenEndpointURL.absoluteString
