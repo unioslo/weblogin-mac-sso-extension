@@ -96,6 +96,9 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             
             // Make sure UI changes happen on main thread
             
+            // This is unnecessary as Keycloak will not send a JS message
+            // when the authentication method is Password. Nevertheless we keep this here
+            // so that we can revaluate this in the future
             if loginManager?.authenticationMethod == .password {
                 self.sendSignedTokenToJS("none")
                 return
