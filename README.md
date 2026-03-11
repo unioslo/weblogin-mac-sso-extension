@@ -4,15 +4,13 @@ This is a macOS Platform SSO Extension developed at the University of Oslo for u
 
 ## Features
 
-- Allows users with registered devices to login in passwordless to Keycloak
+- Allows users with registered devices to login in passwordless (when using the Secure Enclave Authentication Method) to Keycloak
 
 
 
 ## Known limitations
 
-- **Secure Enclave-only**: this extension only implements the Secure Enclave authentication method. 
-- **works poorly with required actions**: When re-authentication is needed because of a required action, the extension doesn't behave well.
-- **SAML clients has some quirks**: We have tested very few SAML flows, so some test is further required. 
+- Due to design choices, when the IdP requires reauthentication and the AuthenticationMethod is "Password", the reauthentication process is handled entirely by Keycloak. When using Secure Enclave, a local re-authentication is used.
 
 ## How to use it
 

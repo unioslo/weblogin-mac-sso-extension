@@ -97,8 +97,8 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             // Make sure UI changes happen on main thread
             
             if loginManager?.authenticationMethod == .password {
-                    self.sendSignedTokenToJS("none")
-                 return
+                self.sendSignedTokenToJS("none")
+                return
                 
             }
             
@@ -106,7 +106,7 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             self.view.isHidden = true
             self.view.window?.makeKeyAndOrderFront(nil)
             self.view.window?.setContentSize(NSMakeSize(10,10))
-          
+            
             self.view.window?.isOpaque = false
             self.view.window?.backgroundColor = .clear
             // Make entire view controller contents transparent
@@ -114,7 +114,7 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             self.view.alphaValue = 0.0
             self.view.wantsLayer = true
             self.isMainViewHidden = false
-              
+            
             // self.cancelButton.isHidden = false
             self.view.needsLayout = true
             self.webView.isHidden = false
@@ -125,37 +125,37 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             
             Task {
                 view.window?.makeKeyAndOrderFront(self)
-
-               
+                
+                
+                
+                let ctx = LAContext()
+                let localizedReason = String(localized: "authenticate you")
+                ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localizedReason) {   (success, error) in
+                    logger.log("webloginlog: User asked for reauthentication. Success: \(success)")
                     
-                    let ctx = LAContext()
-                    let localizedReason = String(localized: "authenticate you")
-                    ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localizedReason) {   (success, error) in
-                        logger.log("webloginlog: User asked for reauthentication. Success: \(success)")
+                    if success != true {
+                        logger.log("webloginlog: User didn't approve login. Returning.")
+                        // self.authorizationRequest?.cancel()
                         
-                        if success != true {
-                            logger.log("webloginlog: User didn't approve login. Returning.")
-                            // self.authorizationRequest?.cancel()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                             
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                
-                                self.sendSignedTokenToJS( "none");
-                                
-                            }
-                            return
+                            self.sendSignedTokenToJS( "none");
+                            
                         }
-                        
+                        return
                     }
-                }
+                    
+                    
+                    
                     logger.log("webloginlog: Calling userNeedsReauthentication")
                     self.loginManager?.userNeedsReauthentication{ error in
-                
+                        
                         
                         if error != nil {
                             logger.log("webloginlog: Error with userNeedsReauthentication")
-
+                            
                             DispatchQueue.main.async {
-
+                                
                                 
                                 self.sendSignedTokenToJS("none")
                                 completion(error)
@@ -167,10 +167,11 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                         completion(nil)
                     }
                     
+                    
+                }
                 
             }
-            
-            
+        }
         
         
     }

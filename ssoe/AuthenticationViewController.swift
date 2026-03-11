@@ -739,10 +739,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             return
         }
         
-        if let loadedURL = webViewURL.baseURL?.absoluteString {
-            logger.log("webloginlog: Page starting with \(loadedURL) has been loaded.")
-        }
-        
+  
 
         let isRequiredAction = webViewURL.absoluteString.starts(with: baseURL) && webView.url?.relativePath.contains("/login-actions") == true
         logger.log("webloginlog: this is a required action: \(isRequiredAction)")
@@ -752,7 +749,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         if webView.url?.relativePath.contains("/login-actions/required-action") == true {
             self.isRequiredAction = true
         }
-        
+        logger.log("webloginlog: this is a required action: \(isRequiredAction)")
+
         
         
         
@@ -769,14 +767,14 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         webView.evaluateJavaScript(js) { [weak self] result, error in
             guard let self = self else { return }
             if let error = error {
-                logger.debug("webloginlog: First-response JS probe error: \(error.localizedDescription)")
+                logger.error("webloginlog: First-response JS probe error: \(error.localizedDescription)")
                 return
             }
             
             if let dict = result as? [String: Any] {
                 
                 
-                let hasPasswordField = dict["hasPassword"] as? Bool ?? false
+                let hasPasswordField = dict["hasPasswordField"] as? Bool ?? false
                 let hasReauthenticate = dict["hasReauthenticate"] as? Bool ?? false
                 
                 
@@ -814,10 +812,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     
                     
                     
-                    logger.debug("webloginlog: Detected interactive login on first response. Showing UI immediately.")
+                    logger.log("webloginlog: Detected interactive login on first response. Showing UI immediately.")
                 } else {
                     showWindowIfDelay()
-                    logger.debug("webloginlog: No password field on first response; keeping UI hidden for SSO.")
+                    logger.log("webloginlog: No password field on first response; keeping UI hidden for SSO.")
                 }
             }
             
@@ -1242,6 +1240,18 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue(clientRequestId, forHTTPHeaderField: "client-request-id")
             
+            var registrationMethod : String
+        
+            switch loginManager.authenticationMethod {
+            case .password:
+                registrationMethod = "PASSWORD"
+            case .userSecureEnclaveKey:
+                registrationMethod = "SECURE_ENCLAVE"
+            default:
+                registrationMethod = "SECURE_ENCLAVE"
+            }
+            
+            
             var params = [
                 "DeviceSigningKey": signingKeyB64,
                 "DeviceEncryptionKey": encryptionKeyB64,
@@ -1249,6 +1259,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 "EncKeyID": encKeyId,
                 "nonce" : nonce!.uuidString.lowercased(),
                 "attestation" : attestationB64,
+                "registrationMethod" : registrationMethod
             ]
             
             if loginManager.registrationToken != nil {
