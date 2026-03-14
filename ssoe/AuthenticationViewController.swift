@@ -71,6 +71,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
         var mdmConfig: (baseURL: String, issuer: String, clientID: String, audience: String)?
         var isRequiredAction: Bool = false
         var postSaml:Bool = false
+        var registrationWebView: WKWebView?
 
     
        @IBOutlet weak var webView: WKWebView!
@@ -91,8 +92,8 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
         super.viewDidLoad()
         loadMDMConfig()
         
-   
         
+
   
         
         logger.log("webloginlog: viewDidLoad")
@@ -124,7 +125,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
 
             // Add spinner
             spinner = NSProgressIndicator()
-        spinner.style = .spinning
+            spinner.style = .spinning
             spinner.controlSize = .large
             spinner.isIndeterminate = true
             spinner.startAnimation(nil)
@@ -183,6 +184,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
    
             
     public func beginAuthorization(with request: ASAuthorizationProviderExtensionAuthorizationRequest) {
+        destroyRegistrationWebView()
         self.authorizationRequest = request
         self.firstResponseChecked = false
         self.showedInteractiveLogin = false
@@ -401,10 +403,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             decisionHandler(.allow)
             return
         }
-
      
         if (RegistrationState.shared.isRegistrationInProgress){
-            logger.info( "webloginlog: Registration login flow.")
+            logger.log( "webloginlog: Registration login flow.")
             if webViewURL.absoluteString.starts(with: "weblogin-sso://idp-login-redirect"){
                 
                 var hasCode = false
@@ -416,7 +417,6 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                         
                         hasCode = true
                         showProcessingOverlay()
-                        
                         self.authorizationRequest?.complete()
                         
                         //self.authorizationRequest?.doNotHandle()
@@ -425,7 +425,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                            // Force redraw
                            //self.view.displayIfNeeded()
                 //        decisionHandler(.cancel)
-                        Task {
+                        Task { @MainActor in
 
                             do {
                                 let token = try await exchangeCodeForToken(code: code!)
@@ -439,7 +439,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                                     }else {
                                         self.registerUser(accessToken: token.access_token)
                                     }
-                                    
+                                    RegistrationState.shared.isRegistrationInProgress = false
                                 }else {
                                     logger.error("webloginlog: No preferred_username in access token")
                                     RegistrationState.shared.registrationCompletion?(.failed)
@@ -463,13 +463,16 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     RegistrationState.shared.registrationCompletion?(.failed)
                     RegistrationState.shared.clear()
                 }
+              
                 decisionHandler(.cancel)
                 webView.configuration.userContentController.removeAllScriptMessageHandlers()
                 self.authorizationRequest?.doNotHandle()
+                logger.debug("webloginlog: End of registration flow block")
+             
                 return
                 
             }else {
-                logger.info("webloginglog: This shouldn't be shown now.")
+                logger.debug("webloginglog: Registration block intermediary page - let it go.")
                 decisionHandler(.allow)
             }
             return
@@ -658,11 +661,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         guard  let url = url, let webViewURL = webView.url else {
             return
         }
-        
     
         
         if let redirectURL = webViewURL.baseURL?.absoluteString {
-            logger.info("webloginlog: Entering redirection to url starting with: \(redirectURL)")
+            logger.log("webloginlog: Entering redirection to url starting with: \(redirectURL)")
         }
 
         if (RegistrationState.shared.isRegistrationInProgress){
@@ -1118,11 +1120,31 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         }
         
         logger.debug("webloginlog: Presenting login page: \(authURL.absoluteString)")
-        
+        destroyRegistrationWebView()
         DispatchQueue.main.async {
-            self.webView.navigationDelegate = self
+           // self.destroyRegistrationWebView()
+            let configuration = WKWebViewConfiguration()
+            configuration.websiteDataStore = WKWebsiteDataStore.nonPersistent()
+            let webView = WKWebView(frame: self.webView.frame, configuration: configuration)
+            webView.navigationDelegate = self
+            self.registrationWebView = webView
             self.isMainViewHidden = false
-            self.webView.load(URLRequest(url: authURL))
+            self.view.addSubview(webView)
+            self.view.addSubview(self.overlayView)
+            webView.load(URLRequest(url: authURL))
+        }
+    }
+    
+    func destroyRegistrationWebView() {
+        DispatchQueue.main.async {
+            guard let webView = self.registrationWebView else { return }
+            logger.log("webloginlog: destroyRegistrationWebView")
+            webView.stopLoading()
+            webView.navigationDelegate = nil
+            webView.removeFromSuperview()
+            self.overlayView.removeFromSuperview()
+
+            self.registrationWebView = nil
         }
     }
     
@@ -1263,9 +1285,11 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             ]
             
             if loginManager.registrationToken != nil {
+                logger.log("webloginlog: using Registration Token for device registration.")
                 params["registrationToken"] = loginManager.registrationToken
                 
             } else {
+                logger.log("webloginlog: using Access Token for device registration.")
                 params["accessToken"] = accessToken
             }
             
@@ -1287,7 +1311,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                     let responseHTTP =  response as? HTTPURLResponse
                     let code = responseHTTP?.statusCode ?? 0
                     logger.error("webloginlog: Error was \(code)")
-                    logger.error("webloginlog: Registration failed: \(error?.localizedDescription ?? "unknown")")
+                    logger.error("webloginlog: Device Registration failed: \(error?.localizedDescription ?? "unknown")")
                     completion(.failed)
                     RegistrationState.shared.clear()
                     return
@@ -1451,6 +1475,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     func registrationDidComplete() {
         
         logger.debug("webloginlog: Registration Did complete done.")
+
         
     }
     
