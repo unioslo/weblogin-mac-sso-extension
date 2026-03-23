@@ -149,9 +149,11 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
                 overlayLabel.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 8),
                 overlayLabel.centerXAnchor.constraint(equalTo: overlayView.centerXAnchor)
             ])
-        
+
         webView.navigationDelegate=self
         webView.configuration.allowsInlinePredictions = true
+        webView.isInspectable = true
+
 
 
         
@@ -188,15 +190,17 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         self.authorizationRequest = request
         self.firstResponseChecked = false
         self.showedInteractiveLogin = false
+        
         webView.configuration.userContentController.add(self, name: "pssoStepUp")
         
         let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")
         let disableSSO = sharedDefaults?.bool(forKey: "disable_sso") ?? false
-        
+        let notRegistered = request.loginManager?.isDeviceRegistered ?? false && request.loginManager?.isUserRegistered ?? false
         logger.log("webloginlog: is sso disabled? \(disableSSO)")
+        logger.log("webloginlog: is device and user registered? \(notRegistered)")
         
-        if disableSSO {
-            logger.info("webloginlog: Disabling SSO, aborting")
+        if disableSSO || !notRegistered {
+            logger.log("webloginlog: SSO is disabled or the device is not registered. Won't display browser.")
             webView.configuration.userContentController.removeAllScriptMessageHandlers()
             authorizationRequest?.doNotHandle()
             return
@@ -1121,12 +1125,14 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         logger.debug("webloginlog: Presenting login page: \(authURL.absoluteString)")
         destroyRegistrationWebView()
-        DispatchQueue.main.async {
-           // self.destroyRegistrationWebView()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             let configuration = WKWebViewConfiguration()
+            configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+            configuration.userContentController.add(self, name: "weblogin")
             configuration.websiteDataStore = WKWebsiteDataStore.nonPersistent()
             let webView = WKWebView(frame: self.webView.frame, configuration: configuration)
             webView.navigationDelegate = self
+            webView.isInspectable = true
             self.registrationWebView = webView
             self.isMainViewHidden = false
             self.view.addSubview(webView)
