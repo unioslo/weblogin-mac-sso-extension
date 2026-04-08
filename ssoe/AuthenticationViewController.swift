@@ -195,11 +195,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         
         let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")
         let disableSSO = sharedDefaults?.bool(forKey: "disable_sso") ?? false
-        let notRegistered = request.loginManager?.isDeviceRegistered ?? false && request.loginManager?.isUserRegistered ?? false
+        let deviceRegistered = request.loginManager?.isDeviceRegistered ?? false && request.loginManager?.isUserRegistered ?? false
+        let userRegistered = request.loginManager?.isUserRegistered ?? false && request.loginManager?.isUserRegistered ?? false
         logger.log("webloginlog: is sso disabled? \(disableSSO)")
-        logger.log("webloginlog: is device and user registered? \(notRegistered)")
-        
-        if disableSSO || !notRegistered {
+        logger.log("webloginlog: is device and user registered? \(userRegistered && deviceRegistered)")
+
+        if disableSSO || !deviceRegistered || !userRegistered {
             logger.log("webloginlog: SSO is disabled or the device is not registered. Won't display browser.")
             webView.configuration.userContentController.removeAllScriptMessageHandlers()
             authorizationRequest?.doNotHandle()
@@ -1368,8 +1369,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             return
         }
         
-     
-        loginManager.resetUserSecureEnclaveKey()
+                loginManager.resetUserSecureEnclaveKey()
         guard let userKey = loginManager.key(for: .userSecureEnclaveKey) else {
             logger.error("webloginlog: No user key found.")
             completion(.failed)
