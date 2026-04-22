@@ -256,145 +256,31 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         let loginManager = request.loginManager
         self.loginManager = loginManager
         let tokens = loginManager?.ssoTokens
-        let clientRequestId = UUID().uuidString
-
-        Task {
-
         if let tokens {
-            for token in tokens {
-                let name = token.key as? String
-                    let value = token.value as? String? ?? "nil"
-            //   logger.log("webloginlog: \(name ?? "nil"): \(value!)")
-                }
-            }
-     
-        if let loginManager = loginManager {
-            if (loginManager.isDeviceRegistered && loginManager.isUserRegistered)
-            {
-                
-                
-                var tokenType = "";
-                if let value = tokens?[AnyHashable("refresh_token_expires_in")] as? Int {
-                    tokenType = "refresh_token"
-                    
-                }else {
-                    tokenType = "id_token"
-                }
-                
-                if let value = tokens?[AnyHashable(tokenType)] as? String {
-                    if let tokenToSign = loginManager.ssoTokens?[tokenType]{
+            logger.log( "webloginlog: There are SSO Tokens. Using them.")
+            insertPssoTokens(request: request, tokens: tokens)
+        }else {
+            logger.log("webloginlog: There are no SSO Tokens. Trying to retrieve them.")
+            loginManager?.userNeedsReauthentication{ error in
 
-                        guard let nonce = try? await self.getNonceFromIdp(clientRequestId: clientRequestId) else {
-                                logger.error("webloginlog: Failed to fetch nonce")
-                                self.authorizationRequest?.complete(error: ASAuthorizationError(.failed))
-                                return
-                            }
-                        
-                        let signedToken = signToken(token: tokenToSign as! String, tokenType: tokenType, loginManager: loginManager, nonce: nonce, clientId: clientRequestId)
-                        self.signedTokenToSend = signedToken
-                    }
+               
+                if let error {
+                    logger.error("webloginlog: Error: \(error.localizedDescription)")
+                    self.webView.configuration.userContentController.removeAllScriptMessageHandlers()
+                    self.authorizationRequest?.doNotHandle()
+
+
                 }
-                
-                
-                
-                
+                else{
+                    let tokens  = self.loginManager?.ssoTokens
+                    logger.log("webloginlog: Got tokens.")
+                    self.insertPssoTokens(request: request, tokens: tokens)
                 }
-        }
-    
-        
-        
-        if let headers = authorizationRequest?.httpHeaders {
-            // Look for Referer, custom hints, etc.
-            if let foundReferer = headers["Referer"] as? String {
-                self.referer  = foundReferer
-                // This often identifies the SP origin for SAML requests
-                logger.debug("webloginlog: Referer header: \(self.referer)")
             }
-        }
-        
-        url=request.url
-        
-        if let authURL = request.url.baseURL?.absoluteString {
-            logger.debug("webloginlog: beginAuthorization. The request url starts with: \(authURL)")
-        }
-        
-        var newRequest = URLRequest(url: request.url)
-        let httpBody = request.httpBody
-        
-        if let httpBodyString = String(data: httpBody, encoding: .utf8)  {
-          
             
-            if httpBodyString.starts(with: "SAMLRequest"){
-               
-                
-                self.kCallbackURLString = referer
-                self.postSaml = true
-                self.saml = true
-                
-                logger.debug("webloginlog: beginAuthorization. This is an initial SAML POST")
-                /*
-                Task{
-                    await handleInitialSamlPost(request: request, bodyString: httpBodyString)
-
-                }*/
-                
-                
-                newRequest.httpMethod = "POST"
-                newRequest.httpBody = request.httpBody
-                newRequest.allHTTPHeaderFields = request.httpHeaders
-               
-                 
-                
-            }
+        }
+        
        
-
-        }
-        
-        // return if it is a saml endpoint but not a saml request:
-        if request.url.absoluteString.starts(with:"\(baseURL)/protocol/saml" ) == true && request.url.absoluteString.contains("SAMLRequest") == false && self.postSaml == false {
-            authorizationRequest?.doNotHandle()
-            return
-        }
-        
-                
-        request.presentAuthorizationViewController(completion: { (success, error) in
-            if error != nil {
-                request.complete(error: error!)
-            }
-        })
-        
-      
-            if let components = URLComponents(url: url!, resolvingAgainstBaseURL: false),
-               let redirectParam = components.queryItems?.first(where: { $0.name == "redirect_uri" })?.value {
-                self.kCallbackURLString = redirectParam
-                logger.debug("webloginlog: beginAuthorization. Callback URL set to \(self.kCallbackURLString)")
-                
-                
-                
-            } else {
-                // fallback: maybe the SP uses a fixed URL
-                self.kCallbackURLString = referer
-                self.saml = true
-                logger.warning("webloginlog: No redirect_uri query param found, using referrer \(self.kCallbackURLString)")
-            }
-            if let url = url {
-                var request = URLRequest(url: url)
-                //let cookies = getCookies()
-                if (self.postSaml){
-                    request = newRequest
-                }
-                
-                if let signedTokenToSend {
-                    logger.debug("webloginlog: Signed token being sent to Keycloak")
-                    request.setValue("Bearer \(signedTokenToSend)", forHTTPHeaderField: "Platform-SSO-Authorization")
-                    
-                }
-                request.httpShouldHandleCookies = true
-                await MainActor.run {
-                    self.webView.load(request)
-                }
-            }
-        }
     }
     
     
@@ -439,7 +325,15 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                                     RegistrationState.shared.idpUsername = idpUsername
                                     logger.debug("webloginlog: Will now call the \(RegistrationState.shared.registrationType!) registration")
 
-                                    if RegistrationState.shared.registrationType == "device" {
+                                     if RegistrationState.shared.loginManager != nil {
+                                         logger.log("webloginlog: idp login manager exists")
+                                        
+                                    }
+                                    if RegistrationState.shared.registrationCompletion != nil {
+                                        logger.log("webloginlog: idp completion exists ")
+                                    }
+                                    
+                                     if RegistrationState.shared.registrationType == "device" {
                                         self.registerDevice(accessToken: token.access_token, userName: idpUsername)
                                     }else {
                                         self.registerUser(accessToken: token.access_token)
@@ -978,7 +872,17 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         logger.debug("webloginlog: is device registered? \(loginManager.isDeviceRegistered)")
         logger.info("webloginlog: Starting user registration")
         
-
+        if RegistrationState.shared.loginManager != nil {
+            logger.log("webloginlog: bgin user login manager exists")
+           
+        }else {
+            logger.log("webloginlog: bgin user login manager  doesn't exists")
+        }
+       if RegistrationState.shared.registrationCompletion != nil {
+           logger.log("webloginlog: bgin user completion exists ")
+       } else {
+           logger.log( "webloginlog: bgin user completion doesn't exists")
+       }
         
         RegistrationState.shared.loginManager = loginManager
         RegistrationState.shared.registrationCompletion = completion
@@ -987,7 +891,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let token = RegistrationState.shared.accessToken
         
         if token != nil {
-            logger.debug("webloginlog: user has token. Proceeding to user registration")
+            logger.log("webloginlog: user has token. Proceeding to user registration")
             registerUser(accessToken: token!)
             
         }else {
@@ -1212,12 +1116,23 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let signKeyId = computeKid(from: signingPublicKey)
         let encKeyId = computeKid(from: encryptionPublicKey)
         
+        /* log the kids
+        logger.log("webloginlog: Signing Key ID: \(signKeyId)")
+        logger.log("webloginlog: Encryption Key ID: \(encKeyId)")
+        */
         
         let baseURL = mdmConfig?.baseURL
         
         
         do {
             let config = configuration()
+            
+            let extensionData = loginManager.extensionData
+            /*
+            if let policy = biometricPolicyFromExtensionData(extensionData) {
+                config.userSecureEnclaveKeyBiometricPolicy = policy
+            }
+             */
             try config.setCustomLoginRequestBodyClaims( ["signKeyId": signKeyId, "encKeyId": encKeyId])
             try loginManager.saveLoginConfiguration(config)
             let savedAudience = loginManager.loginConfiguration?.audience ?? "no_audience_saved"
@@ -1232,7 +1147,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         Task {
             do {
                 let nonceValue = try await getNonceFromIdp(clientRequestId: clientRequestId)
-                logger.debug("webloginlog; Got nonce: \(nonceValue!.uuidString)")
+                let nonceString = nonceValue?.uuidString ?? "no value"
+                logger.debug("webloginlog; Got nonce: \(nonceString)")
                 nonce = nonceValue
             } catch {
                 logger.error("webloginlog: Error fetching nonce: \(error)")
@@ -1330,6 +1246,18 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     }
     
     func registerUser(accessToken: String){
+        if RegistrationState.shared.loginManager != nil {
+            logger.log("webloginlog: reg user login manager exists")
+           
+        }else {
+            logger.error("webloginlog: reg user login manager doesn't exist ")
+        }
+       if RegistrationState.shared.registrationCompletion != nil {
+           logger.log("webloginlog: reg user completion exists ")
+       }else {
+           logger.log("webloginglog: reg user completion doesn't exist")
+       }
+        
         guard let loginManager = RegistrationState.shared.loginManager, let completion = RegistrationState.shared.registrationCompletion else {
             logger.error("webloginlog: No Login Manager or Registration Completion")
             return }

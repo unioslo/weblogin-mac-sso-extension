@@ -8,6 +8,7 @@
 import Foundation
 import CryptoKit
 import AuthenticationServices
+import LocalAuthentication
 
 
 
@@ -25,6 +26,142 @@ extension AuthenticationViewController {
     
     struct Nonce: Decodable {
         let nonce: UUID
+    }
+    
+    func insertPssoTokens(request: ASAuthorizationProviderExtensionAuthorizationRequest, tokens: [AnyHashable: Any]?){
+        let clientRequestId = UUID().uuidString
+        Task {
+
+        if let tokens {
+            for token in tokens {
+                let name = token.key as? String
+                    let value = token.value as? String? ?? "nil"
+            //   logger.log("webloginlog: \(name ?? "nil"): \(value!)")
+                }
+        }
+     
+        if let loginManager = loginManager {
+            if (loginManager.isDeviceRegistered && loginManager.isUserRegistered)
+            {
+                
+                
+                var tokenType = "";
+                if let value = tokens?[AnyHashable("refresh_token_expires_in")] as? Int {
+                    tokenType = "refresh_token"
+                    
+                }else {
+                    tokenType = "id_token"
+                }
+                
+                if let value = tokens?[AnyHashable(tokenType)] as? String {
+                    if let tokenToSign = loginManager.ssoTokens?[tokenType]{
+
+                        guard let nonce = try? await self.getNonceFromIdp(clientRequestId: clientRequestId) else {
+                                logger.error("webloginlog: Failed to fetch nonce")
+                                self.authorizationRequest?.complete(error: ASAuthorizationError(.failed))
+                                return
+                            }
+                        
+                        let signedToken = signToken(token: tokenToSign as! String, tokenType: tokenType, loginManager: loginManager, nonce: nonce, clientId: clientRequestId)
+                        self.signedTokenToSend = signedToken
+                    }
+                }
+            }
+        }
+        
+        if let headers = authorizationRequest?.httpHeaders {
+            // Look for Referer, custom hints, etc.
+            if let foundReferer = headers["Referer"] as? String {
+                self.referer  = foundReferer
+                // This often identifies the SP origin for SAML requests
+                logger.debug("webloginlog: Referer header: \(self.referer)")
+            }
+        }
+        
+        url=request.url
+        
+        if let authURL = request.url.baseURL?.absoluteString {
+            logger.debug("webloginlog: beginAuthorization. The request url starts with: \(authURL)")
+        }
+        
+        var newRequest = URLRequest(url: request.url)
+        let httpBody = request.httpBody
+        
+        if let httpBodyString = String(data: httpBody, encoding: .utf8)  {
+          
+            
+            if httpBodyString.starts(with: "SAMLRequest"){
+               
+                
+                self.kCallbackURLString = referer
+                self.postSaml = true
+                self.saml = true
+                
+                logger.debug("webloginlog: beginAuthorization. This is an initial SAML POST")
+                /*
+                Task{
+                    await handleInitialSamlPost(request: request, bodyString: httpBodyString)
+
+                }*/
+                
+                
+                newRequest.httpMethod = "POST"
+                newRequest.httpBody = request.httpBody
+                newRequest.allHTTPHeaderFields = request.httpHeaders
+               
+                 
+                
+            }
+       
+
+        }
+        
+        // return if it is a saml endpoint but not a saml request:
+        if request.url.absoluteString.starts(with:"\(baseURL)/protocol/saml" ) == true && request.url.absoluteString.contains("SAMLRequest") == false && self.postSaml == false {
+            authorizationRequest?.doNotHandle()
+            return
+        }
+        
+                
+        request.presentAuthorizationViewController(completion: { (success, error) in
+            if error != nil {
+                request.complete(error: error!)
+            }
+        })
+        
+      
+            if let components = URLComponents(url: url!, resolvingAgainstBaseURL: false),
+               let redirectParam = components.queryItems?.first(where: { $0.name == "redirect_uri" })?.value {
+                self.kCallbackURLString = redirectParam
+                logger.debug("webloginlog: beginAuthorization. Callback URL set to \(self.kCallbackURLString)")
+                
+                
+                
+            } else {
+                // fallback: maybe the SP uses a fixed URL
+                self.kCallbackURLString = referer
+                self.saml = true
+                logger.warning("webloginlog: No redirect_uri query param found, using referrer \(self.kCallbackURLString)")
+            }
+            if let url = url {
+                var request = URLRequest(url: url)
+                //let cookies = getCookies()
+                if (self.postSaml){
+                    request = newRequest
+                }
+                
+                if let signedTokenToSend {
+                    logger.debug("webloginlog: Signed token being sent to Keycloak")
+                    request.setValue("Bearer \(signedTokenToSend)", forHTTPHeaderField: "Platform-SSO-Authorization")
+                    
+                }
+                request.httpShouldHandleCookies = true
+                await MainActor.run {
+                    self.webView.load(request)
+                }
+            }
+        }
+        
     }
     
     func getNonceFromIdp(clientRequestId: String) async throws -> UUID? {
@@ -270,4 +407,57 @@ extension AuthenticationViewController {
     }
     
     
+    func deviceSupportsBiometrics() -> Bool {
+        let context = LAContext()
+        var error: NSError?
+
+        // This returns true only if biometrics are enrolled AND available
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,
+    error: &error) {
+            return true
+        }
+
+        // If false, check why - hardware might exist but not be enrolled
+        if let error = error {
+            switch error.code {
+            case LAError.biometryNotEnrolled.rawValue:
+                // Hardware exists, but user hasn't enrolled biometrics
+                return true
+            case LAError.biometryNotAvailable.rawValue:
+                // No biometric hardware (e.g., desktop Mac without Touch ID)
+                return false
+            default:
+                return false
+            }
+        }
+
+        return false
+    }
+
+    func biometricPolicyFromExtensionData(_ extensionData: [AnyHashable: Any]) -> ASAuthorizationProviderExtensionLoginConfiguration.UserSecureEnclaveKeyBiometricPolicy? {
+        // Determine base policy (mutually exclusive - first one wins)
+        var policy: ASAuthorizationProviderExtensionLoginConfiguration.UserSecureEnclaveKeyBiometricPolicy?
+
+        if extensionData["UseTouchIDOrWatchCurrentSet"] as? Bool == true {
+            policy = .touchIDOrWatchCurrentSet
+        } else if extensionData["UseTouchIDOrWatchAny"] as? Bool == true {
+            policy = .touchIDOrWatchAny
+        }
+
+        // Add modifiers if we have a base policy
+        if var policy = policy {
+            if extensionData["ReuseUnlock"] as? Bool == true {
+                policy.insert(.reuseDuringUnlock)
+            }
+
+            if extensionData["PasswordFallback"] as? Bool == true {
+                policy.insert(.passwordFallback)
+            }
+
+            return policy
+        }
+
+        return nil
+    }
+
 }

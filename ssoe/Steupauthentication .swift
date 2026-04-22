@@ -128,54 +128,69 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             
             Task {
                 view.window?.makeKeyAndOrderFront(self)
-                
-                
-                
-                let ctx = LAContext()
-                let localizedReason = String(localized: "authenticate you")
-                ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localizedReason) {   (success, error) in
-                    logger.log("webloginlog: User asked for reauthentication. Success: \(success)")
+                if let policy = biometricPolicyFromExtensionData(loginManager?.extensionData
+                  ?? [:])  {
                     
-                    if success != true {
-                        logger.log("webloginlog: User didn't approve login. Returning.")
-                        // self.authorizationRequest?.cancel()
-                        
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            
-                            self.sendSignedTokenToJS( "none");
-                            
-                        }
-                        return
-                    }
-                    
-                    
-                    
-                    logger.log("webloginlog: Calling userNeedsReauthentication")
                     self.loginManager?.userNeedsReauthentication{ error in
-                        
-                        
                         if error != nil {
                             logger.log("webloginlog: Error with userNeedsReauthentication")
-                            
                             DispatchQueue.main.async {
-                                
-                                
                                 self.sendSignedTokenToJS("none")
                                 completion(error)
-                                
                             }
                             return
                         }
                         logger.info( "webloginlog: User successfully reauthenticated. Proceeding with login.")
                         completion(nil)
                     }
+                }
+                else {
                     
+                    let ctx = LAContext()
+                    let localizedReason = String(localized: "authenticate you")
+                    ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localizedReason) {   (success, error) in
+                        logger.log("webloginlog: User asked for reauthentication. Success: \(success)")
+                        
+                        if success != true {
+                            logger.log("webloginlog: User didn't approve login. Returning.")
+                            // self.authorizationRequest?.cancel()
+                            
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                
+                                self.sendSignedTokenToJS( "none");
+                                
+                            }
+                            return
+                        }
+                        
+                        
+                        
+                        logger.log("webloginlog: Calling userNeedsReauthentication")
+                        self.loginManager?.userNeedsReauthentication{ error in
+                            
+                            
+                            if error != nil {
+                                logger.log("webloginlog: Error with userNeedsReauthentication")
+                                
+                                DispatchQueue.main.async {
+                                    
+                                    
+                                    self.sendSignedTokenToJS("none")
+                                    completion(error)
+                                    
+                                }
+                                return
+                            }
+                            logger.info( "webloginlog: User successfully reauthenticated. Proceeding with login.")
+                            completion(nil)
+                        }
+                        
+                        
+                    }
                     
                 }
-                
             }
         }
-        
         
     }
     
