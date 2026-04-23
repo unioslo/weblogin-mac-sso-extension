@@ -325,13 +325,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                                     RegistrationState.shared.idpUsername = idpUsername
                                     logger.debug("webloginlog: Will now call the \(RegistrationState.shared.registrationType!) registration")
 
-                                     if RegistrationState.shared.loginManager != nil {
-                                         logger.log("webloginlog: idp login manager exists")
-                                        
-                                    }
-                                    if RegistrationState.shared.registrationCompletion != nil {
-                                        logger.log("webloginlog: idp completion exists ")
-                                    }
+                                    
                                     
                                      if RegistrationState.shared.registrationType == "device" {
                                         self.registerDevice(accessToken: token.access_token, userName: idpUsername)
@@ -872,18 +866,6 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         logger.debug("webloginlog: is device registered? \(loginManager.isDeviceRegistered)")
         logger.info("webloginlog: Starting user registration")
         
-        if RegistrationState.shared.loginManager != nil {
-            logger.log("webloginlog: bgin user login manager exists")
-           
-        }else {
-            logger.log("webloginlog: bgin user login manager  doesn't exists")
-        }
-       if RegistrationState.shared.registrationCompletion != nil {
-           logger.log("webloginlog: bgin user completion exists ")
-       } else {
-           logger.log( "webloginlog: bgin user completion doesn't exists")
-       }
-        
         RegistrationState.shared.loginManager = loginManager
         RegistrationState.shared.registrationCompletion = completion
         RegistrationState.shared.isRegistrationInProgress = true
@@ -1128,11 +1110,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             let config = configuration()
             
             let extensionData = loginManager.extensionData
-            /*
+            
             if let policy = biometricPolicyFromExtensionData(extensionData) {
                 config.userSecureEnclaveKeyBiometricPolicy = policy
             }
-             */
+             
+            
             try config.setCustomLoginRequestBodyClaims( ["signKeyId": signKeyId, "encKeyId": encKeyId])
             try loginManager.saveLoginConfiguration(config)
             let savedAudience = loginManager.loginConfiguration?.audience ?? "no_audience_saved"
@@ -1144,7 +1127,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         }
         
         var nonce = nil as UUID?
-        Task {
+        Task { @MainActor in
             do {
                 let nonceValue = try await getNonceFromIdp(clientRequestId: clientRequestId)
                 let nonceString = nonceValue?.uuidString ?? "no value"
@@ -1228,6 +1211,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                    (200...299).contains(httpResponse.statusCode) || httpResponse.statusCode == 409 {
                     logger.log("webloginlog: Device successfully registered.")
                     completion(.success)
+                    
                     RegistrationState.shared.clear()
                     return
                 } else {
@@ -1246,18 +1230,6 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     }
     
     func registerUser(accessToken: String){
-        if RegistrationState.shared.loginManager != nil {
-            logger.log("webloginlog: reg user login manager exists")
-           
-        }else {
-            logger.error("webloginlog: reg user login manager doesn't exist ")
-        }
-       if RegistrationState.shared.registrationCompletion != nil {
-           logger.log("webloginlog: reg user completion exists ")
-       }else {
-           logger.log("webloginglog: reg user completion doesn't exist")
-       }
-        
         guard let loginManager = RegistrationState.shared.loginManager, let completion = RegistrationState.shared.registrationCompletion else {
             logger.error("webloginlog: No Login Manager or Registration Completion")
             return }

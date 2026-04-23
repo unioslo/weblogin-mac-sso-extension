@@ -39,7 +39,7 @@ final class RegistrationState {
     var registrationType: String?
     // small helper to clear
     func clear() {
-        loginManager = nil
+       // loginManager = nil
         registrationCompletion = nil
         isRegistrationInProgress = false
         
