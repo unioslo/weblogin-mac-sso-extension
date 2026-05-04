@@ -460,4 +460,50 @@ extension AuthenticationViewController {
         return nil
     }
 
+    func updateConfiguration(loginManager: ASAuthorizationProviderExtensionLoginManager) {
+        guard let currentConfig = loginManager.loginConfiguration else {
+            logger.warning("webloginlog: No existing configuration to update")
+            return
+        }
+
+        let extensionData = loginManager.extensionData ?? [:]
+        let desiredPolicy = biometricPolicyFromExtensionData(extensionData)
+
+        // Check if device supports biometrics
+        let canUseBiometrics = deviceSupportsBiometrics()
+
+        // Determine what the policy should be
+        let targetPolicy: ASAuthorizationProviderExtensionLoginConfiguration.UserSecureEnclaveKeyBiometricPolicy?
+        if let policy = desiredPolicy, canUseBiometrics {
+            targetPolicy = policy
+        } else {
+            targetPolicy = []
+        }
+
+        // Compare with current policy
+        let currentPolicy = currentConfig.userSecureEnclaveKeyBiometricPolicy
+
+        if currentPolicy != targetPolicy {
+            logger.debug("webloginlog: Biometric policy has changed, updating configuration")
+
+    
+            
+            if let targetPolicy = targetPolicy, let newConfig = loginManager.loginConfiguration {
+                newConfig.userSecureEnclaveKeyBiometricPolicy = targetPolicy
+            
+                do {
+                    try loginManager.saveLoginConfiguration(newConfig)
+                    loginManager.deviceRegistrationsNeedsRepair()
+                    logger.log("webloginlog: Configuration updated successfully")
+                } catch {
+                    logger.log("webloginlog: Failed to update configuration: \(error)")
+                }
+            }
+
+           
+        } else {
+            logger.debug("webloginlog: Biometric policy unchanged, no update needed")
+        }
+    }
+
 }

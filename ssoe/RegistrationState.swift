@@ -37,6 +37,7 @@ final class RegistrationState {
     var accessToken: String?
     var idpUsername: String?
     var registrationType: String?
+    
     // small helper to clear
     func clear() {
        // loginManager = nil

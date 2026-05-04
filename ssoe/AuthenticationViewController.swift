@@ -255,6 +255,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         
         let loginManager = request.loginManager
         self.loginManager = loginManager
+        if let loginManager {
+            updateConfiguration(loginManager: loginManager)
+        }
+       
         let tokens = loginManager?.ssoTokens
         if let tokens {
             logger.log( "webloginlog: There are SSO Tokens. Using them.")
