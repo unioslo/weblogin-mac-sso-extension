@@ -153,6 +153,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
         webView.navigationDelegate=self
         webView.configuration.allowsInlinePredictions = true
         webView.isInspectable = true
+        webView.pageZoom = 0.8
 
 
 
@@ -309,7 +310,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
            
 
                     if code != nil {
-                        
+
                         hasCode = true
                         showProcessingOverlay()
                         self.authorizationRequest?.complete()
@@ -866,6 +867,11 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         completion: @escaping (ASAuthorizationProviderExtensionRegistrationResult) -> Void
     ){
         
+        if !options.contains(.userInteractionEnabled){
+            completion(.userInterfaceRequired)
+            return
+            
+        }
         
         logger.debug("webloginlog: is device registered? \(loginManager.isDeviceRegistered)")
         logger.info("webloginlog: Starting user registration")
@@ -911,7 +917,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                     
                 }
                 
-                self.idpLogin()
+                self.idpLogin(isSetupAssistant: options.contains(.setupAssistant),loginManager: loginManager)
                 
             }
         }
@@ -959,7 +965,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 result in
             
                 
-                self.idpLogin()
+                self.idpLogin(isSetupAssistant: options.contains(.setupAssistant),loginManager: loginManager)
                 
                 // completion(.userInterfaceRequired)
                 
@@ -973,8 +979,16 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
     }
     
-    func idpLogin() {
+    func idpLogin(isSetupAssistant: Bool, loginManager: ASAuthorizationProviderExtensionLoginManager) {
         logger.debug("webloginlog: Starting IdP login")
+        
+        var refreshToken : String?
+        if isSetupAssistant {
+            if let ssoTokens = loginManager.ssoTokens {
+                refreshToken = ssoTokens[AnyHashable("refresh_token")] as? String
+            }
+            
+        }
         
         RegistrationState.shared.accessToken = nil
         guard let baseURL = self.mdmConfig?.baseURL,
@@ -1028,7 +1042,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             self.isMainViewHidden = false
             self.view.addSubview(webView)
             self.view.addSubview(self.overlayView)
-            webView.load(URLRequest(url: authURL))
+            var request = URLRequest(url: authURL)
+            if refreshToken != nil {
+                request.setValue("Bearer \(refreshToken!)", forHTTPHeaderField: "Authorization-Setup-Assistant-PSSO")
+            }
+            webView.load(request)
+            webView.pageZoom = 0.8
         }
     }
     

@@ -4,10 +4,9 @@
 <dict>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>authsrv:uio.keycloak.no?mode=developer</string>
+		<string>authsrv:uio.keycloak.no</string>
 		<string>authsrv:weblogin2-test.uio.no</string>
 		<string>authsrv:weblogin2.uio.no</string>
-		<string>authsrv:uio.keycloak.no</string>
 		<string>webcredentials:weblogin2.uio.no</string>
 		<string>webcredentials:uio.keycloak.no</string>
 	</array>
