@@ -192,29 +192,6 @@ extension AuthenticationViewController {
         }
         
         let now = Int(Date().timeIntervalSince1970)
-        var userKeySecureEnclave : SecKey?
-        var userKey : SecKey
-        var userPublicKey : SecKey?
-        var userKid = ""
-        if loginManager.authenticationMethod == .userSecureEnclaveKey {
-           userKeySecureEnclave = loginManager.key(for: .userSecureEnclaveKey)
-        
-            if userKeySecureEnclave == nil {
-                logger.error("webloginlog: no secure enclave key found.")
-                return nil
-            }
-            userKey = userKeySecureEnclave!
-            userPublicKey = SecKeyCopyPublicKey(userKey)
-            if userPublicKey != nil {
-                userKid = computeKid(from: userPublicKey!)
-            }else {
-                logger.error("webloginlog: failed to extract kid.")
-                return nil
-            }
-
-            
-        }
-        
         guard let signingPublicKey = SecKeyCopyPublicKey(signingKey) else {
             logger.error("webloginlog: Failed to extract public keys.")
             return nil
@@ -236,7 +213,6 @@ extension AuthenticationViewController {
             "signed_at": now,
             "username" : username,
             "nonce" : nonce.uuidString,
-            "user_kid" : userKid,
             "client_id": clientId,
             "secure_enclave" : isSecureEnclave
         ]

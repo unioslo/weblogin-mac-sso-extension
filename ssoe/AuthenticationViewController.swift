@@ -988,7 +988,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 refreshToken = ssoTokens[AnyHashable("refresh_token")] as? String
             }
             
-        }
+       }
         
         RegistrationState.shared.accessToken = nil
         guard let baseURL = self.mdmConfig?.baseURL,
@@ -1031,6 +1031,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         logger.debug("webloginlog: Presenting login page: \(authURL.absoluteString)")
         destroyRegistrationWebView()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let clientRequestId = UUID().uuidString
+
             let configuration = WKWebViewConfiguration()
             configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
             configuration.userContentController.add(self, name: "weblogin")
@@ -1042,12 +1044,34 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             self.isMainViewHidden = false
             self.view.addSubview(webView)
             self.view.addSubview(self.overlayView)
-            var request = URLRequest(url: authURL)
-            if refreshToken != nil {
-                request.setValue("Bearer \(refreshToken!)", forHTTPHeaderField: "Authorization-Setup-Assistant-PSSO")
+
+            // Handle async nonce fetching if refresh token exists
+            if let refreshToken = refreshToken {
+                Task {
+                    var request = URLRequest(url: authURL)
+
+                    if let nonce = try? await self.getNonceFromIdp(clientRequestId: clientRequestId) {
+                        let signedToken = self.signToken(token: refreshToken, tokenType: "refresh_token", loginManager: loginManager, nonce: nonce, clientId: clientRequestId)
+
+                        if let signedToken = signedToken {
+                            request.setValue("Bearer \(signedToken)", forHTTPHeaderField: "Platform-SSO-Authorization")
+                            logger.debug("webloginlog: Added Platform-SSO-Authorization header with refresh token")
+                        }
+                    } else {
+                        logger.error("webloginlog: Failed to fetch nonce for refresh token")
+                    }
+
+                    await MainActor.run {
+                        webView.pageZoom = 0.8
+                        webView.load(request)
+                    }
+                }
+            } else {
+                // No refresh token, load directly
+                webView.pageZoom = 0.8
+
+                webView.load(URLRequest(url: authURL))
             }
-            webView.load(request)
-            webView.pageZoom = 0.8
         }
     }
     
