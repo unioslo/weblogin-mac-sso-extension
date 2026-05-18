@@ -35,6 +35,8 @@ private let kService = "Weblogin SSO Session Cache"
 let logger = Logger(subsystem: "no.uio.WebloginSSO", category: "general")
 
 class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
+        var authSession: ASWebAuthenticationSession?
+
     
         var overlayView: NSView!
         var spinner: NSProgressIndicator!
@@ -209,6 +211,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         }
         
         
+        if !RegistrationState.shared.isRegistrationInProgress {
+            authorizationRequest?.doNotHandle()
+            return
+        }
         guard let mdmConfig else {
             logger.error("webloginlog: No MDM config, aborting")
             authorizationRequest?.complete(error: ASAuthorizationError(.canceled))
@@ -301,6 +307,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         }
      
         if (RegistrationState.shared.isRegistrationInProgress){
+            decisionHandler(.allow)
+
+            return
             logger.log( "webloginlog: Registration login flow.")
             if webViewURL.absoluteString.starts(with: "weblogin-sso://idp-login-redirect"){
                 
@@ -889,16 +898,17 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         }else {
             
             self.isDeviceRegistrationFlow = true
-            self.isMainViewHidden = false
+            self.isMainViewHidden = true
+        
             if let win = self.view.window {
                 win.makeKeyAndOrderFront(nil)
                 // set desired content size if needed
-                win.setContentSize(NSMakeSize(700, 560))
+                win.setContentSize(NSMakeSize(10, 10))
             }
-            
+            /*
             webView.navigationDelegate=self
             webView.configuration.allowsInlinePredictions = true
-            self.isMainViewHidden = false
+            self.isMainViewHidden = true
             // Don't forget to call layoutIfNeeded() when you messing with the constraints
             // self.cancelButton.isHidden = false
             self.view.alphaValue = 1.0
@@ -908,6 +918,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             
             // Force redraw
             self.view.displayIfNeeded()
+             */
             loginManager.presentRegistrationViewController{
                 error in
                 if let error = error {
@@ -1030,6 +1041,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         logger.debug("webloginlog: Presenting login page: \(authURL.absoluteString)")
         destroyRegistrationWebView()
+        
+        //self.isMainViewHidden = false
+        startLogin(authURL: authURL)
+        
+        
+        /*
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             let clientRequestId = UUID().uuidString
 
@@ -1073,6 +1090,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 webView.load(URLRequest(url: authURL))
             }
         }
+         */
     }
     
     func destroyRegistrationWebView() {
@@ -1277,6 +1295,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     }
     
     func registerUser(accessToken: String){
+        logger.log("webloginlog: Begin Register User")
+        
         guard let loginManager = RegistrationState.shared.loginManager, let completion = RegistrationState.shared.registrationCompletion else {
             logger.error("webloginlog: No Login Manager or Registration Completion")
             return }
