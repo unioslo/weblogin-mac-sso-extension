@@ -12,7 +12,7 @@ extension AuthenticationViewController {
 
     
 
-    func startLogin(authURL: URL) {
+    func startLogin(authURL: URL, token: String) {
         
         let callbackScheme = "weblogin-sso"
 
@@ -28,7 +28,7 @@ extension AuthenticationViewController {
                 
                 Task {
                     @MainActor in
-                    do {
+                    do { 
                         let token = try await self.exchangeCodeForToken(code: code!)
                         let access_token = self.decodeJWT(token.access_token)
                         if let idpUsername = access_token?["preferred_username"] as? String {
@@ -39,12 +39,14 @@ extension AuthenticationViewController {
                             
                             if RegistrationState.shared.registrationType == "device" {
                                 self.registerDevice(accessToken: token.access_token, userName: idpUsername)
+                                return
                                 
                                 
                                 
                             }else {
                                 logger.log("webloginlog: Starting user registration")
                                 self.registerUser(accessToken: token.access_token)
+                                return
                                 
                             }
                             self.isMainViewHidden = true
@@ -63,7 +65,12 @@ extension AuthenticationViewController {
                 return
             }
         }
-
+        
+        if !token.isEmpty {
+            authSession?.additionalHeaderFields = ["Platform-SSO-Authorization": "Bearer \(token)"]
+        }
+        logger.log("webloginlog: Starting Authentication web session")
+        // Flag is already set in idpLogin before this is called
         authSession?.presentationContextProvider = self
         authSession?.prefersEphemeralWebBrowserSession = true
         authSession?.start()

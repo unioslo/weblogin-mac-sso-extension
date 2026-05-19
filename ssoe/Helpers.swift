@@ -10,379 +10,9 @@ import CryptoKit
 import AuthenticationServices
 import LocalAuthentication
 
-
-
 extension AuthenticationViewController {
-   
-    struct TokenResponse: Codable {
-        let access_token: String
-        let refresh_token: String
-        let id_token: String
-        let expires_in: Int
-    }
-    
-    
-    
-    
-    struct Nonce: Decodable {
-        let nonce: UUID
-    }
-    
-    func insertPssoTokens(request: ASAuthorizationProviderExtensionAuthorizationRequest, tokens: [AnyHashable: Any]?){
-        let clientRequestId = UUID().uuidString
-        Task {
 
-        if let tokens {
-            for token in tokens {
-                let name = token.key as? String
-                    let value = token.value as? String? ?? "nil"
-            //   logger.log("webloginlog: \(name ?? "nil"): \(value!)")
-                }
-        }
-     
-        if let loginManager = loginManager {
-            if (loginManager.isDeviceRegistered && loginManager.isUserRegistered)
-            {
-                
-                
-                var tokenType = "";
-                if let value = tokens?[AnyHashable("refresh_token_expires_in")] as? Int {
-                    tokenType = "refresh_token"
-                    
-                }else {
-                    tokenType = "id_token"
-                }
-                
-                if let value = tokens?[AnyHashable(tokenType)] as? String {
-                    if let tokenToSign = loginManager.ssoTokens?[tokenType]{
 
-                        guard let nonce = try? await self.getNonceFromIdp(clientRequestId: clientRequestId) else {
-                                logger.error("webloginlog: Failed to fetch nonce")
-                                self.authorizationRequest?.complete(error: ASAuthorizationError(.failed))
-                                return
-                            }
-                        
-                        let signedToken = signToken(token: tokenToSign as! String, tokenType: tokenType, loginManager: loginManager, nonce: nonce, clientId: clientRequestId)
-                        self.signedTokenToSend = signedToken
-                    }
-                }
-            }
-        }
-        
-        if let headers = authorizationRequest?.httpHeaders {
-            // Look for Referer, custom hints, etc.
-            if let foundReferer = headers["Referer"] as? String {
-                self.referer  = foundReferer
-                // This often identifies the SP origin for SAML requests
-                logger.debug("webloginlog: Referer header: \(self.referer)")
-            }
-        }
-        
-        url=request.url
-        
-        if let authURL = request.url.baseURL?.absoluteString {
-            logger.debug("webloginlog: beginAuthorization. The request url starts with: \(authURL)")
-        }
-        
-        var newRequest = URLRequest(url: request.url)
-        let httpBody = request.httpBody
-        
-        if let httpBodyString = String(data: httpBody, encoding: .utf8)  {
-          
-            
-            if httpBodyString.starts(with: "SAMLRequest"){
-               
-                
-                self.kCallbackURLString = referer
-                self.postSaml = true
-                self.saml = true
-                
-                logger.debug("webloginlog: beginAuthorization. This is an initial SAML POST")
-                /*
-                Task{
-                    await handleInitialSamlPost(request: request, bodyString: httpBodyString)
-
-                }*/
-                
-                
-                newRequest.httpMethod = "POST"
-                newRequest.httpBody = request.httpBody
-                newRequest.allHTTPHeaderFields = request.httpHeaders
-               
-                 
-                
-            }
-       
-
-        }
-        
-        // return if it is a saml endpoint but not a saml request:
-        if request.url.absoluteString.starts(with:"\(baseURL)/protocol/saml" ) == true && request.url.absoluteString.contains("SAMLRequest") == false && self.postSaml == false {
-            authorizationRequest?.doNotHandle()
-            return
-        }
-        
-                
-        request.presentAuthorizationViewController(completion: { (success, error) in
-            if error != nil {
-                request.complete(error: error!)
-            }
-        })
-        
-      
-            if let components = URLComponents(url: url!, resolvingAgainstBaseURL: false),
-               let redirectParam = components.queryItems?.first(where: { $0.name == "redirect_uri" })?.value {
-                self.kCallbackURLString = redirectParam
-                logger.debug("webloginlog: beginAuthorization. Callback URL set to \(self.kCallbackURLString)")
-                
-                
-                
-            } else {
-                // fallback: maybe the SP uses a fixed URL
-                self.kCallbackURLString = referer
-                self.saml = true
-                logger.warning("webloginlog: No redirect_uri query param found, using referrer \(self.kCallbackURLString)")
-            }
-            if let url = url {
-                var request = URLRequest(url: url)
-                //let cookies = getCookies()
-                if (self.postSaml){
-                    request = newRequest
-                }
-                
-                if let signedTokenToSend {
-                    logger.debug("webloginlog: Signed token being sent to Keycloak")
-                    request.setValue("Bearer \(signedTokenToSend)", forHTTPHeaderField: "Platform-SSO-Authorization")
-                    
-                }
-                request.httpShouldHandleCookies = true
-                await MainActor.run {
-                    self.webView.load(request)
-                }
-            }
-        }
-        
-    }
-    
-    func getNonceFromIdp(clientRequestId: String) async throws -> UUID? {
-        let config = configuration()
-        let nonceEndpointURL = config.nonceEndpointURL
-        var nonceRequest = URLRequest(url: nonceEndpointURL)
-        nonceRequest.httpMethod = "POST"
-        nonceRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        nonceRequest.setValue(clientRequestId, forHTTPHeaderField: "client-request-id")
-        
-        let formData = "grant_type=srv_challenge"
-        nonceRequest.httpBody = formData.data(using: .utf8)
-        do {
-            let (data, _) = try await URLSession.shared.data(for: nonceRequest)
-            let nonceJSON = try JSONDecoder().decode(Nonce.self, from: data)
-            logger.debug("webloginlog: Nonce fetched from IdP: \(nonceJSON.nonce)")
-            return nonceJSON.nonce
-        }
-        catch {
-            logger.error("webloginlog: Error fetching nonce: \(error)")
-            return nil
-        }
-    }
-    
-    func signToken(token: String, tokenType: String, loginManager: ASAuthorizationProviderExtensionLoginManager, nonce: UUID, clientId: String) -> String? {
-        guard let signingKey = loginManager.key(for: .sharedDeviceSigning) else {
-            return nil
-        }
-        
-        let now = Int(Date().timeIntervalSince1970)
-        guard let signingPublicKey = SecKeyCopyPublicKey(signingKey) else {
-            logger.error("webloginlog: Failed to extract public keys.")
-            return nil
-        }
-        
-        let signKeyId = computeKid(from: signingPublicKey)
-        
-        guard let username = loginManager.userLoginConfiguration?.loginUserName else {
-            logger.error("webloginlog: NO USERNAME SAVED!")
-            return nil
-        }
-        
-        let isSecureEnclave = loginManager.authenticationMethod == .userSecureEnclaveKey ? true : false
-        
-        let envelope: [String: Any] = [
-            "token": token,
-            "token_type" : tokenType,
-            "kid": signKeyId,
-            "signed_at": now,
-            "username" : username,
-            "nonce" : nonce.uuidString,
-            "client_id": clientId,
-            "secure_enclave" : isSecureEnclave
-        ]
-        do {
-            let jsonData = try? JSONSerialization.data(withJSONObject: envelope, options: [])
-            if let jsonData = jsonData {
-                
-                
-                let envB64 =  base64URLEncode(jsonData)
-                let dataToSign = Data(envB64.utf8)
-                
-                do {
-                      let signature = SecKeyCreateSignature(signingKey, .ecdsaSignatureMessageX962SHA256, dataToSign as CFData, nil)
-                        
-                        let sigData = signature as? Data
-                        if let sigData{
-                            let sigB64  = base64URLEncode(sigData)
-                            return "\(envB64).\(sigB64)"
-                    }
-                }
-                
-            }
-            
-        }
-    return nil
-    }
-    
-    func exchangeCodeForToken(code: String) async throws -> TokenResponse {
-        guard let baseURL = self.mdmConfig?.baseURL else { throw URLError(.badURL) }
-        guard let clientId = self.mdmConfig?.clientID else { throw URLError(.badURL)}
-        let url = URL(string: "\(baseURL)/protocol/openid-connect/token")!
-        var request = URLRequest(url: url)
-        
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        
-        let verifier = RegistrationState.shared.pkceVerifier
-        let body = "grant_type=authorization_code&code=\(code)&redirect_uri=weblogin-sso://idp-login-redirect&client_id=\(clientId)&code_verifier=\(verifier)"
-        request.httpBody = body.data(using: .utf8)
-        
-        let (data, _) = try await URLSession.shared.data(for: request)
-        do {
-            let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
-            
-            
-            if let json = json {
-                for (key, value) in json {
-                   // logger.debug("webloginlog: \(key): \(String(describing: value))")
-                }
-            } else {
-                logger.error("webloginlog: Could not parse token response as dictionary")
-            }
-            
-        } catch {
-            logger.error("webloginlog: Failed to decode JSON: \(error.localizedDescription)")
-            if let rawString = String(data: data, encoding: .utf8) {
-                logger.error("webloginlog: Raw response string: \(rawString)")
-            }
-        }
-        
-        return try JSONDecoder().decode(TokenResponse.self, from: data)
-    }
-    
-    
-    
-    
-    func htmlEscape(_ s: String) -> String {
-        return s
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-    }
-    
-    func base64URLEncode(_ data: Data) -> String {
-        var s = data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-        return s
-    }
-    
-    func computeKid(from publicKey: SecKey) -> String {
-        let der = exportPublicKeyDER(publicKey)
-        let hash = sha256(der)
-        return hash.base64EncodedString()
-    }
-    
-    func exportPublicKeyDER(_ key: SecKey) -> Data {
-        var error: Unmanaged<CFError>?
-        guard let der = SecKeyCopyExternalRepresentation(key, &error) as Data? else {
-            fatalError("webloginlog: Could not export public key: \(String(describing: error))")
-        }
-        return der
-    }
-    
-    func sha256(_ data: Data) -> Data {
-        let hash = SHA256.hash(data: data)
-        return Data(hash)
-    }
-    
-    func decodeJWT(_ jwt: String) -> [String: Any]? {
-        let segments = jwt.split(separator: ".")
-        guard segments.count >= 2 else { return nil }
-        
-        let payloadSegment = segments[1]
-        
-        var payload = payloadSegment
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        
-        // Pad base64 if needed
-        while payload.count % 4 != 0 {
-            payload.append("=")
-        }
-        
-        guard let data = Data(base64Encoded: payload) else { return nil }
-        
-        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-    }
-    
-    func showProcessingOverlay() {
-        overlayView.isHidden = false
-        spinner.startAnimation(nil)
-    }
-    func hideProcessingOverlay() {
-        overlayView.isHidden = true
-        spinner.stopAnimation(nil)
-    }
-    
-
-    
-    func stringFromManagedPreferences(forKey key: String, inDomain domain: String) -> String? {
-        guard let value = CFPreferencesCopyAppValue(key as CFString, domain as CFString) else {
-            return nil
-        }
-        return value as? String
-    }
-    
-    func loadMDMConfig() {
-        
-        let domain = Bundle.main.bundleIdentifier ?? "no.uio.WebloginSSO.ssoe"
-
-        
-        guard let baseURL = stringFromManagedPreferences(forKey: "BaseURL", inDomain: domain) else {
-            logger.error("webloginlog: BaseURL not found in MDM config")
-            return
-        }
-        
-        guard let issuer = stringFromManagedPreferences(forKey: "Issuer", inDomain: domain) else {
-            logger.error("webloginlog: Issuer not found")
-            return
-        }
-        
-        guard let clientID = stringFromManagedPreferences(forKey: "ClientID", inDomain: domain) else {
-            logger.error("webloginlog: ClientID not found")
-            return
-        }
-        
-        guard let audience = stringFromManagedPreferences(forKey: "Audience", inDomain: domain) else {
-            logger.error("webloginlog: Audience not found")
-            return
-        }
-        
-        logger.debug("webloginlog: Loaded MDM config → BaseURL: \(baseURL), ClientID: \(clientID)")
-        
-        self.mdmConfig = (baseURL, issuer, clientID, audience)
-    }
-    
-    
     func deviceSupportsBiometrics() -> Bool {
         let context = LAContext()
         var error: NSError?
@@ -481,5 +111,85 @@ extension AuthenticationViewController {
             logger.debug("webloginlog: Biometric policy unchanged, no update needed")
         }
     }
+}
 
+// MARK: - Global Helper Functions (accessible to all)
+
+func htmlEscape(_ s: String) -> String {
+    return s
+        .replacingOccurrences(of: "&", with: "&amp;")
+        .replacingOccurrences(of: "\"", with: "&quot;")
+        .replacingOccurrences(of: "<", with: "&lt;")
+        .replacingOccurrences(of: ">", with: "&gt;")
+}
+
+func base64URLEncode(_ data: Data) -> String {
+    let s = data.base64EncodedString()
+        .replacingOccurrences(of: "+", with: "-")
+        .replacingOccurrences(of: "/", with: "_")
+        .replacingOccurrences(of: "=", with: "")
+    return s
+}
+
+func combineCookies(cookies: [HTTPCookie]) -> String {
+    let dateFormatter = ISO8601DateFormatter.init()
+    var cookiesStrings = [String]()
+    for cookie in cookies {
+        var cookieString = [String]()
+        cookieString.append("\(cookie.name)=\(cookie.value)")
+        cookieString.append("domain=\(cookie.domain)")
+        cookieString.append("path=\(cookie.path)")
+        if let expires = cookie.expiresDate {
+            cookieString.append("expires=\(dateFormatter.string(from: expires))")
+        }
+        if cookie.isSecure {
+            cookieString.append("secure")
+        }
+        if cookie.isHTTPOnly {
+            cookieString.append("httponly")
+        }
+        if let sameSite = cookie.sameSitePolicy {
+            cookieString.append("SameSite=\(sameSite.rawValue)")
+        }
+        cookiesStrings.append(cookieString.joined(separator: "; "))
+    }
+    return cookiesStrings.joined(separator: ", ")
+}
+
+func computeKid(from publicKey: SecKey) -> String {
+    let der = exportPublicKeyDER(publicKey)
+    let hash = sha256(der)
+    return hash.base64EncodedString()
+}
+
+func exportPublicKeyDER(_ key: SecKey) -> Data {
+    var error: Unmanaged<CFError>?
+    guard let der = SecKeyCopyExternalRepresentation(key, &error) as Data? else {
+        fatalError("webloginlog: Could not export public key: \(String(describing: error))")
+    }
+    return der
+}
+
+func sha256(_ data: Data) -> Data {
+    let hash = CryptoKit.SHA256.hash(data: data)
+    return Data(hash)
+}
+
+func decodeJWT(_ jwt: String) -> [String: Any]? {
+    let segments = jwt.split(separator: ".")
+    guard segments.count >= 2 else { return nil }
+
+    let payloadSegment = segments[1]
+
+    var payload = payloadSegment
+        .replacingOccurrences(of: "-", with: "+")
+        .replacingOccurrences(of: "_", with: "/")
+
+    while payload.count % 4 != 0 {
+        payload.append("=")
+    }
+
+    guard let data = Data(base64Encoded: payload) else { return nil }
+
+    return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
 }
