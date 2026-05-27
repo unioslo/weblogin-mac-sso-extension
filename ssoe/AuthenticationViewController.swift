@@ -90,20 +90,20 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
 
     override func viewDidLoad(){
         super.viewDidLoad()
-        loadMDMConfig()
+       // loadMDMConfig()
         
         
 
   
         
         logger.log("webloginlog: viewDidLoad")
-        guard let baseURL = self.mdmConfig?.baseURL else {
-            return
-        }
+      //  guard let baseURL = self.mdmConfig?.baseURL else {
+      //      return
+      //  }
 
                 
         
-        self.baseURL = baseURL
+       // self.baseURL = baseURL
         // Overlay config
         
         
@@ -191,9 +191,27 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         self.authorizationRequest = request
         self.firstResponseChecked = false
         self.showedInteractiveLogin = false
-        
+        self.loginManager = request.loginManager
+
+        // Load ExtensionData early
+        guard let tempLoginManager = request.loginManager else {
+            logger.error("webloginlog: No loginManager in authorization request")
+            authorizationRequest?.doNotHandle()
+            return
+        }
+
+        let extensionData = tempLoginManager.extensionData
+        guard let baseURLString = extensionData["BaseURL"] as? String else {
+            logger.error("webloginlog: BaseURL not found in ExtensionData during authorization")
+            authorizationRequest?.complete(error: ASAuthorizationError(.canceled))
+            return
+        }
+
+        self.baseURL = baseURLString
+        loadMDMConfig(loginManager: tempLoginManager)
+
         webView.configuration.userContentController.add(self, name: "pssoStepUp")
-        
+
         let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")
         let disableSSO = sharedDefaults?.bool(forKey: "disable_sso") ?? false
         let deviceRegistered = request.loginManager?.isDeviceRegistered ?? false && request.loginManager?.isUserRegistered ?? false
@@ -207,16 +225,12 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             authorizationRequest?.doNotHandle()
             return
         }
-        
-        
-        guard let mdmConfig else {
-            logger.error("webloginlog: No MDM config, aborting")
+
+        guard let baseURL = URL(string: baseURLString) else {
+            logger.error("webloginlog: Invalid BaseURL format")
             authorizationRequest?.complete(error: ASAuthorizationError(.canceled))
             return
-            
         }
-        
-        let baseURL = URL(string: mdmConfig.baseURL)!
         let authorizationURLs = [ "\(baseURL)/protocol/openid-connect/auth", "\(baseURL)/protocol/saml"]
         
         var startAuthorization = false
@@ -261,7 +275,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         }
        
         let tokens = loginManager?.ssoTokens
-        if let tokens {
+        if let tokens = request.loginManager?.ssoTokens {
             logger.log( "webloginlog: There are SSO Tokens. Using them.")
             insertPssoTokens(request: request, tokens: tokens)
         }else {
@@ -818,15 +832,16 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
 
 extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistrationHandler {
     
-    func configuration() -> ASAuthorizationProviderExtensionLoginConfiguration {
+    func configuration(loginManager: ASAuthorizationProviderExtensionLoginManager) -> ASAuthorizationProviderExtensionLoginConfiguration {
         
         logger.debug("webloginlog: getting configuration")
-        let domain = Bundle.main.bundleIdentifier ?? "no.uio.webloginSSO.ssoe"
 
-        let clientID = CFPreferencesCopyAppValue("ClientID" as CFString, domain as CFString) as? String ?? "fallback-client"
-        let baseURL  = CFPreferencesCopyAppValue("BaseURL" as CFString, domain as CFString) as? String ?? "fallback-baseURL"
-        let issuer = CFPreferencesCopyAppValue("Issuer" as CFString, domain as CFString) as? String ?? "fallback-issuer"
-        let audience = CFPreferencesCopyAppValue("Audience" as CFString, domain as CFString) as? String ?? "fallback-audience"
+        let extensionData = loginManager.extensionData
+        
+        let clientID = extensionData["ClientID"] as? String ?? "fallback-client"
+        let baseURL  = extensionData["BaseURL"] as? String ?? "fallback-baseURL"
+        let issuer = extensionData["Issuer"] as? String ?? "fallback-issuer"
+        let audience = extensionData["Audience"] as? String ?? "fallback-audience"
         
         
         let tokenEndpointURL = URL(string: baseURL+"/psso/token")!
@@ -866,13 +881,16 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         options: ASAuthorizationProviderExtensionRequestOptions = [],
         completion: @escaping (ASAuthorizationProviderExtensionRegistrationResult) -> Void
     ){
-        
+
+        logger.log("webloginlog: Beginning user registration")
+        // Set self.loginManager early so getNonceFromIdp can use it if needed
+        self.loginManager = loginManager
         if !options.contains(.userInteractionEnabled){
             completion(.userInterfaceRequired)
             return
             
         }
-        
+
         logger.debug("webloginlog: is device registered? \(loginManager.isDeviceRegistered)")
         logger.info("webloginlog: Starting user registration")
         
@@ -932,7 +950,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                                  (ASAuthorizationProviderExtensionRegistrationResult) ->
                                  Void) {
         logger.debug("webloginlog: beginDeviceRegistration")
-        
+        self.loginManager = loginManager
+        loadMDMConfig(loginManager: loginManager)
         RegistrationState.shared.loginManager = loginManager
         RegistrationState.shared.registrationCompletion = completion
         RegistrationState.shared.isRegistrationInProgress = true
@@ -980,22 +999,34 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     }
     
     func idpLogin(isSetupAssistant: Bool, loginManager: ASAuthorizationProviderExtensionLoginManager) {
-        logger.debug("webloginlog: Starting IdP login")
-        
+        logger.log("webloginlog: Starting IdP login")
+
+        // Load ExtensionData directly
+        let extensionData = loginManager.extensionData
+        guard let baseURL = extensionData["BaseURL"] as? String else {
+            logger.error("webloginlog: BaseURL not found in ExtensionData during idpLogin")
+            if let completion = RegistrationState.shared.registrationCompletion {
+                completion(.failed)
+            }
+            return
+        }
+
+        guard let clientID = extensionData["ClientID"] as? String else {
+            logger.error("webloginlog: ClientID not found in ExtensionData during idpLogin")
+            if let completion = RegistrationState.shared.registrationCompletion {
+                completion(.failed)
+            }
+            return
+        }
+
         var refreshToken : String?
         if isSetupAssistant {
             if let ssoTokens = loginManager.ssoTokens {
                 refreshToken = ssoTokens[AnyHashable("refresh_token")] as? String
             }
-            
-       }
-        
-        RegistrationState.shared.accessToken = nil
-        guard let baseURL = self.mdmConfig?.baseURL,
-              let clientID = self.mdmConfig?.clientID else {
-            logger.error("Missing MDM baseURL or clientID")
-            return
         }
+
+        RegistrationState.shared.accessToken = nil
         
         // Create PKCE code verifier and challenge
         let verifier = randomString(length: 64)
@@ -1050,7 +1081,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 Task {
                     var request = URLRequest(url: authURL)
 
-                    if let nonce = try? await self.getNonceFromIdp(clientRequestId: clientRequestId) {
+                    if let nonce = try? await self.getNonceFromIdp(clientRequestId: clientRequestId, loginManager: loginManager) {
                         let signedToken = self.signToken(token: refreshToken, tokenType: "refresh_token", loginManager: loginManager, nonce: nonce, clientId: clientRequestId)
 
                         if let signedToken = signedToken {
@@ -1110,6 +1141,15 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         else {
             logger.error("webloginlog: No loginManager and/or completion handler saved for device registration. Aborting.")
             return }
+
+        // Load ExtensionData to get baseURL
+        let extensionData = loginManager.extensionData
+        guard let baseURLString = extensionData["BaseURL"] as? String else {
+            logger.error("webloginlog: BaseURL not found in ExtensionData during device registration")
+            completion(.failed)
+            return
+        }
+
         if loginManager.registrationToken == nil {
             RegistrationState.shared.accessToken = accessToken
             RegistrationState.shared.idpUsername = userName
@@ -1144,18 +1184,15 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         let signKeyId = computeKid(from: signingPublicKey)
         let encKeyId = computeKid(from: encryptionPublicKey)
-        
+
         /* log the kids
         logger.log("webloginlog: Signing Key ID: \(signKeyId)")
         logger.log("webloginlog: Encryption Key ID: \(encKeyId)")
         */
-        
-        let baseURL = mdmConfig?.baseURL
-        
-        
+
         do {
-            let config = configuration()
-            
+            let config = configuration(loginManager: loginManager)
+
             let extensionData = loginManager.extensionData
             
             if let policy = biometricPolicyFromExtensionData(extensionData) {
@@ -1168,7 +1205,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             let savedAudience = loginManager.loginConfiguration?.audience ?? "no_audience_saved"
            
         }catch{
-            let config = configuration()
+            let config = configuration(loginManager: loginManager)
             let token = config.tokenEndpointURL.absoluteString
             logger.error("webloginlog: Failed to save the configuration \(error). Token URL: \(token)")
         }
@@ -1176,7 +1213,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         var nonce = nil as UUID?
         Task { @MainActor in
             do {
-                let nonceValue = try await getNonceFromIdp(clientRequestId: clientRequestId)
+                let nonceValue = try await getNonceFromIdp(clientRequestId: clientRequestId, loginManager: loginManager)
                 let nonceString = nonceValue?.uuidString ?? "no value"
                 logger.debug("webloginlog; Got nonce: \(nonceString)")
                 nonce = nonceValue
@@ -1185,15 +1222,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 completion(.failed)
                 return
             }
-            
-            guard let baseURL else {
-                logger.error("webloginlog: No baseURL found on SSO Extension profile from MDM.")
-                completion(.failed)
-                return
-            }
-            
+
             // POST to your registration endpoint
-            guard let url = URL(string: baseURL+"/psso/enroll" ) else {
+            guard let url = URL(string: baseURLString+"/psso/enroll" ) else {
                 completion(.failed)
                 return
             }
@@ -1280,9 +1311,18 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         guard let loginManager = RegistrationState.shared.loginManager, let completion = RegistrationState.shared.registrationCompletion else {
             logger.error("webloginlog: No Login Manager or Registration Completion")
             return }
-        
-        guard let userName =
-                RegistrationState.shared.idpUsername else {
+
+        logger.log("webloginlog: Begin User registration")
+
+        // Load ExtensionData to get baseURL
+        let extensionData = loginManager.extensionData
+        guard let baseURLString = extensionData["BaseURL"] as? String else {
+            logger.error("webloginlog: BaseURL not found in ExtensionData during user registration")
+            completion(.failed)
+            return
+        }
+
+        guard let userName = RegistrationState.shared.idpUsername else {
             logger.error("webloginlog: No username found.")
             completion(.failed)
             return
@@ -1322,8 +1362,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             completion(.failed)
             return
         }
-            let baseURL = mdmConfig?.baseURL
-            guard let userPublicKey = SecKeyCopyPublicKey(userKey) else {
+
+        guard let userPublicKey = SecKeyCopyPublicKey(userKey) else {
                 logger.error("webloginlog: Can't export the public key for the user.")
                 completion(.failed)
                 return
@@ -1344,7 +1384,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let clientRequestId = UUID().uuidString
         Task {
             do {
-                let nonceValue = try await getNonceFromIdp(clientRequestId: clientRequestId)
+                let nonceValue = try await getNonceFromIdp(clientRequestId: clientRequestId, loginManager: loginManager)
                 logger.debug("webloginlog; Got nonce: \(nonceValue!.uuidString)")
                 nonce = nonceValue
             } catch {
@@ -1367,16 +1407,11 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 guard let data = SecCertificateCopyData(cert) as Data? else { return nil }
                 return data.base64EncodedString(options: [])
             }
-            
+
             logger.debug("webloginlog: user attestation: \(attestationB64)")
-            guard let baseURL else {
-                logger.error("webloginlog: No baseURL found on SSO Extension profile from MDM.")
-                completion(.failed)
-                return
-            }
-            
+
             // POST to your registration endpoint
-            guard let url = URL(string: baseURL+"/psso/userenroll" ) else {
+            guard let url = URL(string: baseURLString+"/psso/userenroll" ) else {
                 completion(.failed)
                 return
             }

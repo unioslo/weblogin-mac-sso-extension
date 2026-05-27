@@ -164,8 +164,14 @@ extension AuthenticationViewController {
         
     }
     
-    func getNonceFromIdp(clientRequestId: String) async throws -> UUID? {
-        let config = configuration()
+    func getNonceFromIdp(clientRequestId: String, loginManager: ASAuthorizationProviderExtensionLoginManager? = nil) async throws -> UUID? {
+        // Use provided loginManager or fall back to self.loginManager
+        guard let manager = loginManager ?? self.loginManager else {
+            logger.error("webloginlog: No loginManager available for getNonceFromIdp")
+            throw URLError(.badURL)
+        }
+
+        let config = configuration(loginManager: manager)
         let nonceEndpointURL = config.nonceEndpointURL
         var nonceRequest = URLRequest(url: nonceEndpointURL)
         nonceRequest.httpMethod = "POST"
@@ -241,8 +247,23 @@ extension AuthenticationViewController {
     }
     
     func exchangeCodeForToken(code: String) async throws -> TokenResponse {
-        guard let baseURL = self.mdmConfig?.baseURL else { throw URLError(.badURL) }
-        guard let clientId = self.mdmConfig?.clientID else { throw URLError(.badURL)}
+        // Get fresh ExtensionData from loginManager
+        guard let loginManager = RegistrationState.shared.loginManager else {
+            logger.error("webloginlog: No loginManager available for exchangeCodeForToken")
+            throw URLError(.badURL)
+        }
+
+        let extensionData = loginManager.extensionData
+        guard let baseURL = extensionData["BaseURL"] as? String else {
+            logger.error("webloginlog: BaseURL not found in ExtensionData during exchangeCodeForToken")
+            throw URLError(.badURL)
+        }
+
+        guard let clientId = extensionData["ClientID"] as? String else {
+            logger.error("webloginlog: ClientID not found in ExtensionData during exchangeCodeForToken")
+            throw URLError(.badURL)
+        }
+
         let url = URL(string: "\(baseURL)/protocol/openid-connect/token")!
         var request = URLRequest(url: url)
         
@@ -352,27 +373,28 @@ extension AuthenticationViewController {
         return value as? String
     }
     
-    func loadMDMConfig() {
+    func loadMDMConfig(loginManager: ASAuthorizationProviderExtensionLoginManager) {
         
-        let domain = Bundle.main.bundleIdentifier ?? "no.uio.WebloginSSO.ssoe"
+        
 
+        let extensionData = loginManager.extensionData
         
-        guard let baseURL = stringFromManagedPreferences(forKey: "BaseURL", inDomain: domain) else {
+        guard let baseURL = extensionData["BaseURL"] as? String else {
             logger.error("webloginlog: BaseURL not found in MDM config")
             return
         }
         
-        guard let issuer = stringFromManagedPreferences(forKey: "Issuer", inDomain: domain) else {
+        guard let issuer = extensionData["Issuer"] as? String else {
             logger.error("webloginlog: Issuer not found")
             return
         }
         
-        guard let clientID = stringFromManagedPreferences(forKey: "ClientID", inDomain: domain) else {
+        guard let clientID = extensionData["ClientID"] as? String else {
             logger.error("webloginlog: ClientID not found")
             return
         }
         
-        guard let audience = stringFromManagedPreferences(forKey: "Audience", inDomain: domain) else {
+        guard let audience = extensionData["Audience"] as? String else {
             logger.error("webloginlog: Audience not found")
             return
         }
