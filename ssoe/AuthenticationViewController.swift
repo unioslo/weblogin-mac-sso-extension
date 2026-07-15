@@ -842,14 +842,16 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let baseURL  = extensionData["BaseURL"] as? String ?? "fallback-baseURL"
         let issuer = extensionData["Issuer"] as? String ?? "fallback-issuer"
         let audience = extensionData["Audience"] as? String ?? "fallback-audience"
-        
+        let useRefreshToken = extensionData["UseRefreshToken"] as? Bool ?? false
         
         let tokenEndpointURL = URL(string: baseURL+"/psso/token")!
         let jwksEndpointURL = URL(string: baseURL+"/protocol/openid-connect/certs")!
+        let authEndpointURL = URL(string: baseURL+"/psso/authurl")!
+        
         
         
       
-      
+        logger.debug("webloginlog: auth endpoint is \(authEndpointURL)")
         
         let config = ASAuthorizationProviderExtensionLoginConfiguration(
             clientID: clientID,
@@ -864,11 +866,21 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             config.nonceEndpointURL = nonceEndpointURL
         }
         
-        config.refreshEndpointURL = tokenEndpointURL
-        config.keyEndpointURL = tokenEndpointURL;
+        if useRefreshToken {
+            config.refreshEndpointURL = tokenEndpointURL
+        }
+        config.keyEndpointURL = tokenEndpointURL
         config.nonceResponseKeypath = "nonce"
         config.groupResponseClaimName = "groups"
         config.audience = audience
+        if #available(macOS 27.0, *) {
+            if loginManager.authenticationMethod == .openID {
+                config.federationType = .dynamicOpenID
+                config.federationUserPreauthenticationURL = authEndpointURL
+                config.authorizationURLKeypath = "authorizationURL"
+
+            }
+        }
         
         
         return config
@@ -1201,6 +1213,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
              
             
             try config.setCustomLoginRequestBodyClaims( ["signKeyId": signKeyId, "encKeyId": encKeyId])
+            try config.setCustomRefreshRequestBodyClaims(["signKeyId": signKeyId, "encKeyId": encKeyId])
+            
             try loginManager.saveLoginConfiguration(config)
             let savedAudience = loginManager.loginConfiguration?.audience ?? "no_audience_saved"
            
@@ -1253,6 +1267,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 registrationMethod = "PASSWORD"
             case .userSecureEnclaveKey:
                 registrationMethod = "SECURE_ENCLAVE"
+            case .openID:
+                registrationMethod = "OPENID"
             default:
                 registrationMethod = "SECURE_ENCLAVE"
             }
@@ -1348,13 +1364,29 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         if loginManager.authenticationMethod == .password {
             let audience = loginManager.loginConfiguration?.audience
-            
+            logger.log("webloginlog: The registration method is Password.")
+
             logger.log("webloginlog: The audience in user registration is: \(audience as NSObject?)")
             let userDeviceSigning = loginManager.key(for: .userDeviceSigning)
             
             completion(.success)
             return
         }
+        
+        if #available(macOS 27.0, *) {
+            if loginManager.authenticationMethod == .openID {
+                let audience = loginManager.loginConfiguration?.audience
+                logger.log("webloginlog: The registration method is OPENID.")
+                
+                logger.log("webloginlog: The audience in user registration is: \(audience as NSObject?)")
+                let userDeviceSigning = loginManager.key(for: .userDeviceSigning)
+                
+                completion(.success)
+                return
+            }
+        }
+        logger.log("webloginlog: The registration method is Secure Enclave.")
+
         
                 loginManager.resetUserSecureEnclaveKey()
         guard let userKey = loginManager.key(for: .userSecureEnclaveKey) else {
@@ -1468,7 +1500,11 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     }
     
     func supportedGrantTypes() -> ASAuthorizationProviderExtensionSupportedGrantTypes {
-        return [.password, .jwtBearer]
+        if #available(macOS 27.0, *) {
+            return [.password, .jwtBearer, .tokenExchange ]
+        } else {
+            return [.password, .jwtBearer]
+        }
     }
     
     func protocolVersion() -> ASAuthorizationProviderExtensionPlatformSSOProtocolVersion {
