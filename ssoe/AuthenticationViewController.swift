@@ -874,12 +874,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         config.groupResponseClaimName = "groups"
         config.audience = audience
         if #available(macOS 27.0, *) {
-            if loginManager.authenticationMethod == .openID {
-                config.federationType = .dynamicOpenID
-                config.federationUserPreauthenticationURL = authEndpointURL
-                config.authorizationURLKeypath = "authorizationURL"
+            config.federationType = .dynamicOpenID
+            config.federationUserPreauthenticationURL = authEndpointURL
+            config.authorizationURLKeypath = "authorizationURL"
 
-            }
         }
         
         
