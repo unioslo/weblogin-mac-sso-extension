@@ -1,0 +1,33 @@
+{
+  "realm": "test",
+  "enabled": true,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "psso-client",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "psso-test-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"]
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "enabled": true,
+      "email": "testuser@idp.test",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "User",
+      "credentials": [
+        { "type": "password", "value": "testpass", "temporary": false }
+      ],
+      "groups": ["/staff"]
+    }
+  ],
+  "groups": [ { "name": "staff" } ]
+}
