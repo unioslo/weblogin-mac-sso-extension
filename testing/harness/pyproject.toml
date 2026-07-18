@@ -1,0 +1,22 @@
+[project]
+name = "psso-test-harness"
+version = "0.1.0"
+description = "pytest harness driving VM-based PSSO extension tests"
+requires-python = ">=3.12"
+dependencies = [
+    "pytest>=8",
+    "pytest-html>=4",
+    "requests>=2.31",
+    "vncdotool>=1.2",
+    "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["harness*"]
