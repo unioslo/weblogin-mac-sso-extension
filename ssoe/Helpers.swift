@@ -504,4 +504,27 @@ extension AuthenticationViewController {
         }
     }
 
+    
+    
 }
+
+extension NSImage {
+
+    func jpegData(compressionQuality: CGFloat = 0.9) -> Data? {
+        guard
+            let tiffData = tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiffData)
+        else {
+            return nil
+        }
+
+        return bitmap.representation(
+            using: .jpeg,
+            properties: [
+                .compressionFactor: compressionQuality
+            ]
+        )
+    }
+}
+
+

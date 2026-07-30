@@ -1515,6 +1515,73 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         return prefs as? T
     }
     
+    func profilePictureForUser(
+        using loginManager: ASAuthorizationProviderExtensionLoginManager,
+        completion: @escaping (Data) -> Void
+    ) {
+      
+        logger.log("webloginlog: Getting profile picture of the user")
+        guard
+            let idToken = loginManager.ssoTokens?["id_token"] as? String,
+            let claims = decodeJWT(idToken),
+            let claimName = loginManager.extensionData["ProfilePictureURLClaim"] as? String,
+            !claimName.isEmpty,
+            let urlString = claims[claimName] as? String,
+            let url = URL(string: urlString)
+        else {
+
+            logger.error("webloginlog: No picture to synchronize. No claim found.")
+
+            completion(Data())
+            return
+        }
+
+        var request = URLRequest(url: url)
+
+        // Uncomment if your image endpoint requires authentication.
+        /*
+        if let accessToken = loginManager.ssoTokens["access_token"] as? String {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
+        */
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+
+            guard
+                error == nil,
+                let http = response as? HTTPURLResponse,
+                (200..<300).contains(http.statusCode),
+                let data
+            else {
+                logger.error("webloginlog: Error downloading profile picture")
+                completion(Data())
+                return
+            }
+
+            // JPEG magic number (FF D8 FF)
+            if data.starts(with: [0xFF, 0xD8, 0xFF]) {
+                logger.log("webloginlog: JPEG picture found.")
+                completion(data)
+                return
+            }
+
+            guard
+                let image = NSImage(data: data),
+                let jpegData = image.jpegData()
+            else {
+                logger.error("webloginlog: Picture couldn't be converted.")
+                completion(Data())
+                return
+            }
+            logger.log("webloginlog: profile picture successfully converted to JPEG.")
+
+            completion(jpegData)
+
+        }.resume()
+    }
+ 
+    
 }
+
 
 
