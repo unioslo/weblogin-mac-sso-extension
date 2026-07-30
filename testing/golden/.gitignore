@@ -1,0 +1,6 @@
+nanomdm/secrets/
+nanomdm/.env
+*.mobileconfig
+install-*.plist
+*.log
+.env

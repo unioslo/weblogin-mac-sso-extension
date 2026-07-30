@@ -1,0 +1,63 @@
+# Disposable MDM used ONLY during the golden-image bake. Not a per-test dependency.
+# Fully local: scep is built from source (no public image exists), nanomdm and nginx are
+# public multi-arch images. No GCP / private registry. Run ./gen-mdm-certs.sh first (or via
+# nanomdm_up) to mint secrets/scep-depot (device CA) and secrets/mdm-certs (idp.test TLS).
+#
+# Topology:
+#   device --http:8080--> scep                            (SCEP identity cert issuance)
+#   device --https:9000(mTLS)--> nginx --> nanomdm:9000   (MDM checkin/command)
+#   host   --http:127.0.0.1:9002--> nanomdm:9000          (enqueue/push API, mTLS-free)
+services:
+  scep:
+    build: ./scep
+    image: golden-scep:local
+    command:
+      - "-depot"
+      - "/depot"
+      - "-port"
+      - "8080"
+      - "-challenge"
+      - "testchallenge"
+      - "-capass"
+      - ""
+      - "-allowrenew"
+      - "0"
+    volumes:
+      - ./secrets/scep-depot:/depot
+    ports:
+      - "0.0.0.0:8080:8080"
+
+  nanomdm:
+    image: ghcr.io/micromdm/nanomdm:0.6.0
+    command:
+      - "-api"
+      - "${NANOMDM_API_KEY}"
+      - "-cert-header"
+      - "X-Forwarded-Client-Cert"
+      - "-ca"
+      - "/secrets/scep-depot/ca.pem"
+      - "-storage"
+      - "file"
+      - "-storage-dsn"
+      - "/data"
+      - "-listen"
+      - "0.0.0.0:9000"
+    volumes:
+      - ./secrets:/secrets:ro
+      - ./secrets/nanomdm-data:/data
+    ports:
+      - "127.0.0.1:9002:9000"   # enqueue/push API — host-local, no mTLS
+    depends_on:
+      - scep
+
+  mdm-proxy:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/mdm.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./secrets/mdm-certs/mdm-server.crt:/etc/nginx/certs/mdm-server.crt:ro
+      - ./secrets/mdm-certs/mdm-server.key:/etc/nginx/certs/mdm-server.key:ro
+      - ./secrets/scep-depot/ca.pem:/etc/nginx/certs/device-ca.pem:ro
+    ports:
+      - "0.0.0.0:9000:9000"   # device-facing mTLS MDM endpoint
+    depends_on:
+      - nanomdm

@@ -1,0 +1,33 @@
+services:
+  mock-idp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    environment:
+      IDP_HOST: "0.0.0.0"
+      IDP_PORT: "8443"
+      IDP_TLS_CERT: "/certs/idp.test.crt"
+      IDP_TLS_KEY: "/certs/idp.test.key"
+    volumes:
+      - ./certs:/certs:ro
+    ports:
+      - "0.0.0.0:8443:8443"   # bound to 0.0.0.0 so the guest VM can reach it
+      # 443: the extension's associated-domains entitlement (authsrv:<SSO_HOST>) only
+      # approves URLs on the SSO host at the standard port, so the guest reaches the
+      # mock at https://<SSO_HOST>/ via its /etc/hosts remap of that host.
+      - "0.0.0.0:443:8443"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm", "--https-port=8444"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "admin"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "admin"
+      KC_HTTPS_CERTIFICATE_FILE: "/certs/idp.test.crt"
+      KC_HTTPS_CERTIFICATE_KEY_FILE: "/certs/idp.test.key"
+      KC_HOSTNAME: "idp.test"
+    volumes:
+      - ./certs:/certs:ro
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "0.0.0.0:8444:8444"
