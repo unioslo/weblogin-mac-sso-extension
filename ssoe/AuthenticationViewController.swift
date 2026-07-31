@@ -1521,10 +1521,11 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     ) {
       
         logger.log("webloginlog: Getting profile picture of the user")
+        let claimName = (loginManager.extensionData["ProfilePictureURLClaim"] as? String) ?? "picture"
+
         guard
             let idToken = loginManager.ssoTokens?["id_token"] as? String,
             let claims = decodeJWT(idToken),
-            let claimName = loginManager.extensionData["ProfilePictureURLClaim"] as? String,
             !claimName.isEmpty,
             let urlString = claims[claimName] as? String,
             let url = URL(string: urlString)
