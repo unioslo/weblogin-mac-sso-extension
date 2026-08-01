@@ -126,23 +126,27 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             self.view.layoutSubtreeIfNeeded()
             
             
-            Task {
+            Task {@MainActor in 
                 view.window?.makeKeyAndOrderFront(self)
                 if let policy = biometricPolicyFromExtensionData(loginManager?.extensionData
                   ?? [:])  {
-                    
+                    logger.log("webloginlog: Reauthentication required")
                     self.loginManager?.userNeedsReauthentication{ error in
+                        
+                        logger.log("webloginlog: Error in reauthentication: \(error?.localizedDescription ?? "no error description")")
                         if error != nil {
                             logger.log("webloginlog: Error with userNeedsReauthentication")
                             DispatchQueue.main.async {
                                 self.sendSignedTokenToJS("none")
                                 completion(error)
+                                    //return
                             }
                             return
                         }
                         logger.info( "webloginlog: User successfully reauthenticated. Proceeding with login.")
                         completion(nil)
                     }
+                    return
                 }
                 else {
                     

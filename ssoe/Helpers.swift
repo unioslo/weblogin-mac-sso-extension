@@ -13,6 +13,7 @@ import LocalAuthentication
 
 
 extension AuthenticationViewController {
+    
    
     struct TokenResponse: Codable {
         let access_token: String
@@ -505,9 +506,87 @@ extension AuthenticationViewController {
     }
 
     
+
+    
     
 }
 
+extension AuthenticationViewController: ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        self.view.window!
+    }
+    
+        
+        
+        
+
+        
+        
+        func startLogin(authURL: URL, refreshToken: String, loginManager: ASAuthorizationProviderExtensionLoginManager) {
+                let callbackScheme = "weblogin-sso"
+
+                authSession = ASWebAuthenticationSession(
+                    url: authURL,
+                    callbackURLScheme: callbackScheme
+                ) { callbackURL, error in
+                    if let url = callbackURL {
+                        let queryItems = URLComponents(string: url.absoluteString)?.queryItems
+                        guard let code = queryItems?.first(where: { $0.name == "code" })?.value else {
+                            logger.error("webloginlog: No code in the callback URL")
+                            RegistrationState.shared.isRegistrationInProgress = false
+                            RegistrationState.shared.registrationCompletion?(.failed)
+                            return
+                        }
+
+                        Task { @MainActor in
+                            do {
+                                let token = try await self.exchangeCodeForToken(code: code)
+                                let access_token = self.decodeJWT(token.access_token)
+                                if let idpUsername = access_token?["preferred_username"] as? String {
+                                    RegistrationState.shared.idpUsername = idpUsername
+                                    logger.log("webloginlog: Will now call the \(RegistrationState.shared.registrationType!) registration")
+
+                                    if RegistrationState.shared.registrationType == "device" {
+                                        self.registerDevice(accessToken: token.access_token, userName: idpUsername)
+                                        return
+                                    } else {
+                                        logger.log("webloginlog: Starting user registration")
+                                        self.registerUser(accessToken: token.access_token)
+                                        return
+                                    }
+                                } else {
+                                    logger.error("webloginlog: No preferred_username in access token")
+                                    RegistrationState.shared.isRegistrationInProgress = false
+                                    RegistrationState.shared.registrationCompletion?(.failed)
+                                    return
+                                }
+                            } catch {
+                                logger.error("webloginlog: Failed to exchange code for token: \(error)")
+                                RegistrationState.shared.isRegistrationInProgress = false
+                                RegistrationState.shared.registrationCompletion?(.failed)
+                                return
+                            }
+                        }
+                    } else if let error = error {
+                        logger.log("webloginlog: There was an error: \(error.localizedDescription)")
+                        RegistrationState.shared.isRegistrationInProgress = false
+                        RegistrationState.shared.registrationCompletion?(.failed)
+                        return
+                    }
+                }
+
+                if !refreshToken.isEmpty {
+                    authSession?.additionalHeaderFields = ["Platform-SSO-Authorization": "Bearer \(refreshToken)"]
+                }
+
+                logger.log("webloginlog: Starting Authentication web session")
+                authSession?.presentationContextProvider = self
+                authSession?.prefersEphemeralWebBrowserSession = true
+                authSession?.start()
+            }
+    }
+
+ 
 extension NSImage {
 
     func jpegData(compressionQuality: CGFloat = 0.9) -> Data? {

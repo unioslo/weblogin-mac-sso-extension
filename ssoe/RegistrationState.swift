@@ -29,14 +29,25 @@ import AuthenticationServices
 final class RegistrationState {
     static let shared = RegistrationState()
 
+    // Shared across extension process launches. The in-memory singleton is not
+    // reliable here: beginAuthorization can be serviced by a freshly relaunched
+    // extension process that never saw the flag set during registration, so we
+    // back it with the App Group so any process instance can read it.
+    private static let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")
+    private static let registrationInProgressKey = "isRegistrationInProgress"
+
     // set by beginDeviceRegistration
     var loginManager: ASAuthorizationProviderExtensionLoginManager?
     var registrationCompletion: ((ASAuthorizationProviderExtensionRegistrationResult) -> Void)?
-    var isRegistrationInProgress: Bool = false
+    var isRegistrationInProgress: Bool {
+        get { Self.sharedDefaults?.bool(forKey: Self.registrationInProgressKey) ?? false }
+        set { Self.sharedDefaults?.set(newValue, forKey: Self.registrationInProgressKey) }
+    }
     var pkceVerifier = ""
     var accessToken: String?
     var idpUsername: String?
     var registrationType: String?
+    var pictureURL: String?
     
     // small helper to clear
     func clear() {

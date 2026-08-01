@@ -35,7 +35,9 @@ private let kService = "Weblogin SSO Session Cache"
 let logger = Logger(subsystem: "no.uio.WebloginSSO", category: "general")
 
 class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
+
     
+      
         var overlayView: NSView!
         var spinner: NSProgressIndicator!
         var overlayLabel: NSTextField!
@@ -72,6 +74,9 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
         var isRequiredAction: Bool = false
         var postSaml:Bool = false
         var registrationWebView: WKWebView?
+        var authSession: ASWebAuthenticationSession?
+        weak var authViewController: AuthenticationViewController?
+
 
     
        @IBOutlet weak var webView: WKWebView!
@@ -167,13 +172,22 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
         
         if (!RegistrationState.shared.isRegistrationInProgress){
             logger.info("webloginlog: viewDidAppear called.")
-        
+
 
             }
             isMainViewHidden = true
             view.isHidden = true
             // view.window?.setContentSize(NSMakeSize(820, 600))
-        
+
+        // During registration the web login runs in ASWebAuthenticationSession
+        // (its own window), so this view controller's window has no content and
+        // would otherwise show as an empty square. Keep the window as a valid
+        // presentation anchor but make it invisible to the user.
+        if RegistrationState.shared.isRegistrationInProgress {
+            view.window?.alphaValue = 0.0
+            view.window?.isOpaque = false
+            view.window?.hasShadow = false
+        }
     }
 
     override var nibName: NSNib.Name? {
@@ -193,6 +207,16 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         self.showedInteractiveLogin = false
         self.loginManager = request.loginManager
 
+        logger.log("webloginlog: Received an authentication request from: \(request.callerBundleIdentifier)")
+        
+        logger.log("webloginlog: Is a registration in Progress? \(RegistrationState.shared.isRegistrationInProgress)")
+        
+        if RegistrationState.shared.isRegistrationInProgress {
+            logger.log("webloginlog: Registration in progress. Don't display the webview")
+            authorizationRequest?.doNotHandle()
+            return
+            
+        }
         // Load ExtensionData early
         guard let tempLoginManager = request.loginManager else {
             logger.error("webloginlog: No loginManager in authorization request")
@@ -916,6 +940,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             
         }else {
             
+            /*
+             
+             Old webview code
+             
             self.isDeviceRegistrationFlow = true
             self.isMainViewHidden = false
             if let win = self.view.window {
@@ -936,17 +964,19 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             
             // Force redraw
             self.view.displayIfNeeded()
+             */
             loginManager.presentRegistrationViewController{
                 error in
                 if let error = error {
                     logger.error("webloginlog: \(error)")
+                    RegistrationState.shared.isRegistrationInProgress = false
                     completion(.failed)
                     return
-                    
+
                 }
-                
+
                 self.idpLogin(isSetupAssistant: options.contains(.setupAssistant),loginManager: loginManager)
-                
+
             }
         }
         
@@ -967,6 +997,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         RegistrationState.shared.isRegistrationInProgress = true
         RegistrationState.shared.registrationType = "device"
         self.isDeviceRegistrationFlow = true
+        /*
+         Old webview
+         
         self.isMainViewHidden = false
         if let win = self.view.window {
             win.makeKeyAndOrderFront(nil)
@@ -975,8 +1008,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         }
         
    
-        webView.navigationDelegate=self
-        webView.configuration.allowsInlinePredictions = true
+       // webView.navigationDelegate=self
+       // webView.configuration.allowsInlinePredictions = true
         self.isMainViewHidden = false
         // Don't forget to call layoutIfNeeded() when you messing with the constraints
         // self.cancelButton.isHidden = false
@@ -987,19 +1020,26 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         // Force redraw
         self.view.displayIfNeeded()
+         */
         
         if loginManager.registrationToken == nil {
             logger.log("Device registration started using User Login.")
             loginManager.presentRegistrationViewController {
-                result in
-            
-                
+                error in
+
+                if let error = error {
+                    logger.error("webloginlog: \(error)")
+                    RegistrationState.shared.isRegistrationInProgress = false
+                    completion(.failed)
+                    return
+                }
+
                 self.idpLogin(isSetupAssistant: options.contains(.setupAssistant),loginManager: loginManager)
-                
+
                 // completion(.userInterfaceRequired)
-                
-                
-                
+
+
+
             }
         }else {
             logger.log("webloginlog: Device Registration started using Registration Token.")
@@ -1015,6 +1055,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let extensionData = loginManager.extensionData
         guard let baseURL = extensionData["BaseURL"] as? String else {
             logger.error("webloginlog: BaseURL not found in ExtensionData during idpLogin")
+            RegistrationState.shared.isRegistrationInProgress = false
             if let completion = RegistrationState.shared.registrationCompletion {
                 completion(.failed)
             }
@@ -1023,6 +1064,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
 
         guard let clientID = extensionData["ClientID"] as? String else {
             logger.error("webloginlog: ClientID not found in ExtensionData during idpLogin")
+            RegistrationState.shared.isRegistrationInProgress = false
             if let completion = RegistrationState.shared.registrationCompletion {
                 completion(.failed)
             }
@@ -1066,11 +1108,52 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         guard let authURL = components.url else {
             logger.error("Failed to construct Keycloak auth URL")
+            RegistrationState.shared.isRegistrationInProgress = false
+            RegistrationState.shared.registrationCompletion?(.failed)
             return
         }
         
         logger.debug("webloginlog: Presenting login page: \(authURL.absoluteString)")
-        destroyRegistrationWebView()
+        
+        
+        // new authentication:
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let clientRequestId = UUID().uuidString
+
+            var signedTokenToSend = ""
+            // Handle async nonce fetching if refresh token exists
+            if let refreshToken = refreshToken {
+                Task {
+                    var request = URLRequest(url: authURL)
+
+                    if let nonce = try? await self.getNonceFromIdp(clientRequestId: clientRequestId, loginManager: loginManager) {
+                        let signedToken = self.signToken(token: refreshToken, tokenType: "refresh_token", loginManager: loginManager, nonce: nonce, clientId: clientRequestId)
+
+                        if let signedToken = signedToken {
+                            signedTokenToSend = signedToken
+                            request.setValue("Bearer \(signedToken)", forHTTPHeaderField: "Platform-SSO-Authorization")
+                            logger.debug("webloginlog: Added Platform-SSO-Authorization header with refresh token")
+                        }
+                    } else {
+                        logger.error("webloginlog: Failed to fetch nonce for refresh token")
+                    }
+
+                    await MainActor.run {
+                        self.startLogin(authURL: authURL, refreshToken: signedTokenToSend, loginManager: loginManager)
+                    }
+                }
+            } else {
+                self.startLogin(authURL: authURL, refreshToken: signedTokenToSend, loginManager: loginManager)
+            }
+        }
+        
+        
+       // destroyRegistrationWebView()
+        
+        /*
+         
+        // old webview
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             let clientRequestId = UUID().uuidString
 
@@ -1114,6 +1197,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 webView.load(URLRequest(url: authURL))
             }
         }
+         */
     }
     
     func destroyRegistrationWebView() {
@@ -1532,19 +1616,13 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         else {
 
             logger.error("webloginlog: No picture to synchronize. No claim found.")
-
-            completion(Data())
+            returnPicture(with: Data(), completion: completion)
+            //completion(Data())
             return
         }
 
         var request = URLRequest(url: url)
 
-        // Uncomment if your image endpoint requires authentication.
-        /*
-        if let accessToken = loginManager.ssoTokens["access_token"] as? String {
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        }
-        */
 
         URLSession.shared.dataTask(with: request) { data, response, error in
 
@@ -1555,14 +1633,16 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 let data
             else {
                 logger.error("webloginlog: Error downloading profile picture")
-                completion(Data())
+                self.returnPicture(with: Data(), completion: completion)
+                //completion(Data())
                 return
             }
 
             // JPEG magic number (FF D8 FF)
             if data.starts(with: [0xFF, 0xD8, 0xFF]) {
                 logger.log("webloginlog: JPEG picture found.")
-                completion(data)
+                self.returnPicture(with: data, completion: completion)
+                //completion(data)
                 return
             }
 
@@ -1571,18 +1651,25 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 let jpegData = image.jpegData()
             else {
                 logger.error("webloginlog: Picture couldn't be converted.")
-                completion(Data())
+                self.returnPicture(with: Data(), completion: completion)
+                //completion(Data())
                 return
             }
             logger.log("webloginlog: profile picture successfully converted to JPEG.")
 
-            completion(jpegData)
+            
+            self.returnPicture(with: jpegData, completion: completion)
 
         }.resume()
     }
  
-    
+    func returnPicture(with data: Data, completion: @escaping (Data) -> Void) {
+        DispatchQueue.main.async {
+            completion(data)
+        }
+    }
 }
+
 
 
 
