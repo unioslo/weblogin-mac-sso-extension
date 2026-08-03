@@ -548,9 +548,13 @@ extension AuthenticationViewController: ASWebAuthenticationPresentationContextPr
 
                                     if RegistrationState.shared.registrationType == "device" {
                                         self.registerDevice(accessToken: token.access_token, userName: idpUsername)
+                                        RegistrationState.shared.isRegistrationInProgress = false
+
                                         return
                                     } else {
                                         logger.log("webloginlog: Starting user registration")
+                                        RegistrationState.shared.isRegistrationInProgress = false
+
                                         self.registerUser(accessToken: token.access_token)
                                         return
                                     }

@@ -1408,6 +1408,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     func registerUser(accessToken: String){
         guard let loginManager = RegistrationState.shared.loginManager, let completion = RegistrationState.shared.registrationCompletion else {
             logger.error("webloginlog: No Login Manager or Registration Completion")
+            RegistrationState.shared.isRegistrationInProgress = false
+
             return }
 
         logger.log("webloginlog: Begin User registration")
@@ -1416,12 +1418,15 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         let extensionData = loginManager.extensionData
         guard let baseURLString = extensionData["BaseURL"] as? String else {
             logger.error("webloginlog: BaseURL not found in ExtensionData during user registration")
+            RegistrationState.shared.isRegistrationInProgress = false
+
             completion(.failed)
             return
         }
 
         guard let userName = RegistrationState.shared.idpUsername else {
             logger.error("webloginlog: No username found.")
+            RegistrationState.shared.isRegistrationInProgress = false
             completion(.failed)
             return
         }
@@ -1441,6 +1446,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         }catch{
             
             logger.error("webloginlog: Failed to save the configuration \(error).")
+            RegistrationState.shared.isRegistrationInProgress = false
             completion(.failed)
         }
         
@@ -1450,7 +1456,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
 
             logger.log("webloginlog: The audience in user registration is: \(audience as NSObject?)")
             let userDeviceSigning = loginManager.key(for: .userDeviceSigning)
-            
+            RegistrationState.shared.isRegistrationInProgress = false
             completion(.success)
             return
         }
@@ -1462,7 +1468,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 
                 logger.log("webloginlog: The audience in user registration is: \(audience as NSObject?)")
                 let userDeviceSigning = loginManager.key(for: .userDeviceSigning)
-                
+                RegistrationState.shared.isRegistrationInProgress = false
                 completion(.success)
                 return
             }
@@ -1473,12 +1479,16 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 loginManager.resetUserSecureEnclaveKey()
         guard let userKey = loginManager.key(for: .userSecureEnclaveKey) else {
             logger.error("webloginlog: No user key found.")
+            RegistrationState.shared.isRegistrationInProgress = false
+
             completion(.failed)
             return
         }
 
         guard let userPublicKey = SecKeyCopyPublicKey(userKey) else {
                 logger.error("webloginlog: Can't export the public key for the user.")
+            RegistrationState.shared.isRegistrationInProgress = false
+
                 completion(.failed)
                 return
                 
@@ -1503,6 +1513,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 nonce = nonceValue
             } catch {
                 logger.debug("webloginlog: Error fetching nonce: \(error)")
+                RegistrationState.shared.isRegistrationInProgress = false
+
                 completion(.failed)
                 return
             }
@@ -1555,6 +1567,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                    (200...299).contains(httpResponse.statusCode) || httpResponse.statusCode == 409 {
                     completion(.success)
                     RegistrationState.shared.clear()
+                    RegistrationState.shared.isRegistrationInProgress = false
+
                     return
                 } else {
                     let responseHTTP =  response as? HTTPURLResponse
@@ -1563,6 +1577,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                     logger.error("webloginlog: User Registration failed: \(error?.localizedDescription ?? "unknown")")
                     completion(.failed)
                     RegistrationState.shared.clear()
+                    RegistrationState.shared.isRegistrationInProgress = false
+
                     return
                 }
             }.resume()
