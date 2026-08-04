@@ -22,7 +22,7 @@ extension AuthenticationViewController {
         let expires_in: Int
     }
     
-    
+   
     
     
     struct Nonce: Decodable {

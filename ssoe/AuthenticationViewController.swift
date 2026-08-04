@@ -975,8 +975,15 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
 
                 }
 
-                self.idpLogin(isSetupAssistant: options.contains(.setupAssistant),loginManager: loginManager)
-
+                
+               if options.contains(.setupAssistant), let silentRegistration = loginManager.extensionData["SilentUserRegistrationDuringSetupAssistant"], silentRegistration as! Bool, let refresh_token = loginManager.ssoTokens?["refresh_token"] as? String {
+                    
+                    self.doSilentUserRegistration(refresh_token: refresh_token, loginManager: loginManager)
+                    
+                    
+                }else {
+                    self.idpLogin(isSetupAssistant: options.contains(.setupAssistant),loginManager: loginManager)
+                }
             }
         }
         
@@ -1622,21 +1629,22 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
       
         logger.log("webloginlog: Getting profile picture of the user")
         let claimName = (loginManager.extensionData["ProfilePictureURLClaim"] as? String) ?? "picture"
-
+                        
         guard
-            let idToken = loginManager.ssoTokens?["id_token"] as? String,
-            let claims = decodeJWT(idToken),
-            !claimName.isEmpty,
-            let urlString = claims[claimName] as? String,
-            let url = URL(string: urlString)
+             let idToken = loginManager.ssoTokens?["id_token"] as? String,
+             let claims = decodeJWT(idToken),
+             !claimName.isEmpty,
+             let urlString = claims[claimName] as? String,
+             let url = URL(string: urlString)
+             
         else {
-
-            logger.error("webloginlog: No picture to synchronize. No claim found.")
-            returnPicture(with: Data(), completion: completion)
-            //completion(Data())
-            return
-        }
-
+             
+             logger.error("webloginlog: No picture to synchronize. No claim found.")
+             returnPicture(with: Data(), completion: completion)
+             //completion(Data())
+             return
+            }
+             
         var request = URLRequest(url: url)
 
 
@@ -1684,6 +1692,80 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             completion(data)
         }
     }
+    
+    func doSilentUserRegistration(refresh_token: String, loginManager: ASAuthorizationProviderExtensionLoginManager){
+        
+        let base_url = loginManager.extensionData["BaseURL"] as? String ?? "fallback-baseURL"
+        let clientID  = loginManager.extensionData["ClientID"] as? String ?? "psso"
+        
+        let url = URL(string: "\(base_url)/protocol/openid-connect/token")!
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "refresh_token": refresh_token,
+            "grant_type" : "refresh_token",
+            "client_id" : clientID
+        ]
+
+        request.httpBody = body
+            .map { "\($0.key)=\(($0.value as AnyObject).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
+                .joined(separator: "&")
+                .data(using: .utf8)
+        
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+
+                if let error = error {
+                    logger.error("webloginlog: Error on HTTP request for access token: \(error.localizedDescription).")
+                    self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    return
+                }
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                   logger.error("webloginlog: Response was not successfull.")
+                   self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                   return
+               }
+                guard let data = data else {
+                    logger.error("webloginlog: no data returned from access token request.")
+                    self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    return
+                }
+
+                do {
+                    let newData = String(decoding: data, as: UTF8.self)
+                    
+                    guard
+                            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                            let accessToken = json["access_token"] as? String,
+                            let access_token = self.decodeJWT(accessToken),
+                            let idpUsername = access_token["preferred_username"] as? String
+                                
+                        else {
+                            logger.log("webloginlog: Token response did not contain an access_token.")
+                            self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                        
+                            return
+                        }
+
+                    RegistrationState.shared.idpUsername = idpUsername
+                    self.registerUser(accessToken: accessToken )
+                    return
+                    
+                } catch {
+                    logger.error("webloginlog: Error decoding access token: \(error.localizedDescription).")
+                    self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    return
+
+                }
+
+            }.resume()
+        
+    }
+    
 }
 
 
