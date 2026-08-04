@@ -99,11 +99,19 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             // This is unnecessary as Keycloak will not send a JS message
             // when the authentication method is Password. Nevertheless we keep this here
             // so that we can revaluate this in the future
-            if loginManager?.authenticationMethod == .password {
-                self.sendSignedTokenToJS("none")
-                return
+            
+            let forceIdpReauthentication = loginManager?.extensionData["ForceIDPReauthentication"] as? Bool ?? false
+            
+            if forceIdpReauthentication == true {
+                if loginManager?.authenticationMethod == .password {
+                    self.sendSignedTokenToJS("none")
+                    return
+                    
+                }
                 
             }
+            
+            let forceLocalReauthentication = loginManager?.extensionData["ForceLocalReauthentication"] as? Bool ?? false
             
             dumpActivationState("label")
             self.view.isHidden = true
@@ -128,8 +136,7 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             
             Task {@MainActor in 
                 view.window?.makeKeyAndOrderFront(self)
-                if let policy = biometricPolicyFromExtensionData(loginManager?.extensionData
-                  ?? [:])  {
+                if forceLocalReauthentication == false {
                     logger.log("webloginlog: Reauthentication required")
                     self.loginManager?.userNeedsReauthentication{ error in
                         
