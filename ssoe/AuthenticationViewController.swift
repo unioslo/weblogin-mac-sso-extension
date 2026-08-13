@@ -240,6 +240,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         let disableSSO = sharedDefaults?.bool(forKey: "disable_sso") ?? false
         let deviceRegistered = request.loginManager?.isDeviceRegistered ?? false && request.loginManager?.isUserRegistered ?? false
         let userRegistered = request.loginManager?.isUserRegistered ?? false && request.loginManager?.isUserRegistered ?? false
+        
         logger.log("webloginlog: is sso disabled? \(disableSSO)")
         logger.log("webloginlog: is device and user registered? \(userRegistered && deviceRegistered)")
 
@@ -310,6 +311,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                 if let error {
                     logger.error("webloginlog: Error: \(error.localizedDescription)")
                     self.webView.configuration.userContentController.removeAllScriptMessageHandlers()
+                    
+                
+                
                     self.authorizationRequest?.doNotHandle()
 
 
@@ -898,6 +902,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         config.groupResponseClaimName = "groups"
         config.audience = audience
         if #available(macOS 27.0, *) {
+            
+            config.includePlatformSSOAuthorizationScopes = extensionData["includePlatformSSOAuthorizationScopes"] as? Bool ?? false
             config.federationType = .dynamicOpenID
             config.federationUserPreauthenticationURL = authEndpointURL
             config.authorizationURLKeypath = "authorizationURL"
@@ -920,6 +926,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         // Set self.loginManager early so getNonceFromIdp can use it if needed
         self.loginManager = loginManager
         if !options.contains(.userInteractionEnabled){
+            logger.log("webloginlog: User interaction enabled. Aborting.")
             completion(.userInterfaceRequired)
             return
             
@@ -1483,7 +1490,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         logger.log("webloginlog: The registration method is Secure Enclave.")
 
         
-                loginManager.resetUserSecureEnclaveKey()
+        loginManager.resetUserSecureEnclaveKey()
         guard let userKey = loginManager.key(for: .userSecureEnclaveKey) else {
             logger.error("webloginlog: No user key found.")
             RegistrationState.shared.isRegistrationInProgress = false
@@ -1766,6 +1773,28 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
     }
     
+    func keyWillRotate(for keyType: ASAuthorizationProviderExtensionKeyType, newKey: SecKey, loginManager: ASAuthorizationProviderExtensionLoginManager) async -> Bool {
+        logger.log("weblogin: keyWillRotate called for keyType \(keyType.rawValue)")
+
+        // Our registration flow (see registerDevice/registerUser) needs a fresh
+        // access token to attest and post the new public keys to the IdP, which we
+        // don't have in this callback. So instead of completing the rotation in
+        // place, we decline it and ask the OS to re-run the relevant registration,
+        // which re-establishes the keys through the normal token-backed flow.
+        switch keyType {
+        case .userDeviceSigning, .userDeviceEncryption, .userSecureEnclaveKey, .userSmartCard:
+            logger.log("weblogin: keyWillRotate - requesting user registration repair")
+            loginManager.userRegistrationsNeedsRepair()
+        case .sharedDeviceSigning, .sharedDeviceEncryption, .currentDeviceSigning, .currentDeviceEncryption:
+            logger.log("weblogin: keyWillRotate - requesting device registration repair")
+            loginManager.deviceRegistrationsNeedsRepair()
+        @unknown default:
+            logger.error("weblogin: keyWillRotate - unknown keyType \(keyType.rawValue), declining rotation")
+        }
+
+        // Return false: we did not rotate to newKey ourselves; a full repair will run instead.
+        return false
+    }
 }
 
 
