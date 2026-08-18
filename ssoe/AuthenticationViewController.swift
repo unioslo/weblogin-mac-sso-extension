@@ -904,6 +904,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         if #available(macOS 27.0, *) {
             
             config.includePlatformSSOAuthorizationScopes = extensionData["includePlatformSSOAuthorizationScopes"] as? Bool ?? false
+            logger.log("webloginlog: includePlatformSSOAuthorizationScopes: \(config.includePlatformSSOAuthorizationScopes)")
             config.federationType = .dynamicOpenID
             config.federationUserPreauthenticationURL = authEndpointURL
             config.authorizationURLKeypath = "authorizationURL"
