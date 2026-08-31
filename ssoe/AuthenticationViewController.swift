@@ -234,6 +234,19 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         self.baseURL = baseURLString
         loadMDMConfig(loginManager: tempLoginManager)
 
+        // webView is a weak IBOutlet, so it is still nil if the authorization
+        // request arrives before anything asked for our view. Decline the
+        // request instead of trapping on the outlet. Do not load the view here:
+        // creating our (invisible) window early makes it compete for key window
+        // status with the login browser, which then swallows the first click.
+        guard webView != nil else {
+            logger.error("webloginlog: webView is not available, cannot handle authorization")
+            authorizationRequest?.doNotHandle()
+            return
+        }
+
+        // A handler left over from an abandoned request would make add() raise.
+        webView.configuration.userContentController.removeAllScriptMessageHandlers()
         webView.configuration.userContentController.add(self, name: "pssoStepUp")
 
         let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")
@@ -342,81 +355,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             return
         }
      
-        if (RegistrationState.shared.isRegistrationInProgress){
-            logger.log( "webloginlog: Registration login flow.")
-            if webViewURL.absoluteString.starts(with: "weblogin-sso://idp-login-redirect"){
-                
-                var hasCode = false
-                if let components = URLComponents(url: webViewURL, resolvingAgainstBaseURL: false)  {
-                    let code =  components.queryItems?.first(where: { $0.name == "code" })?.value
-           
 
-                    if code != nil {
-
-                        hasCode = true
-                        showProcessingOverlay()
-                        self.authorizationRequest?.complete()
-                        
-                        //self.authorizationRequest?.doNotHandle()
-                        
-                      
-                           // Force redraw
-                           //self.view.displayIfNeeded()
-                //        decisionHandler(.cancel)
-                        Task { @MainActor in
-
-                            do {
-                                let token = try await exchangeCodeForToken(code: code!)
-                                let access_token = decodeJWT(token.access_token)
-                                if let idpUsername = access_token?["preferred_username"] as? String {
-                                    RegistrationState.shared.idpUsername = idpUsername
-                                    logger.debug("webloginlog: Will now call the \(RegistrationState.shared.registrationType!) registration")
-
-                                    
-                                    
-                                     if RegistrationState.shared.registrationType == "device" {
-                                        self.registerDevice(accessToken: token.access_token, userName: idpUsername)
-                                    }else {
-                                        self.registerUser(accessToken: token.access_token)
-                                    }
-                                    RegistrationState.shared.isRegistrationInProgress = false
-                                }else {
-                                    logger.error("webloginlog: No preferred_username in access token")
-                                    RegistrationState.shared.registrationCompletion?(.failed)
-                                    return
-                                }
-                                
-                            }catch {
-                                logger.error("webloginlog: Fetching the token failed somehow: \(error)")
-                                RegistrationState.shared.registrationCompletion?(.failed)
-                                RegistrationState.shared.clear()
-                                return
-                                
-                            }
-                            
-                        }
-                    }
-                    
-                    
-                }
-                if !hasCode{
-                    RegistrationState.shared.registrationCompletion?(.failed)
-                    RegistrationState.shared.clear()
-                }
-              
-                decisionHandler(.cancel)
-                webView.configuration.userContentController.removeAllScriptMessageHandlers()
-                self.authorizationRequest?.doNotHandle()
-                logger.debug("webloginlog: End of registration flow block")
-             
-                return
-                
-            }else {
-                logger.debug("webloginglog: Registration block intermediary page - let it go.")
-                decisionHandler(.allow)
-            }
-            return
-        }
        
         guard let request = navigationAction.request as? NSMutableURLRequest, let url = url else {
             decisionHandler(.allow)
@@ -494,8 +433,27 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                         for param in saml_response {
                             let key_value = param.split(separator: "=",maxSplits: 1)
                             let paramName = String(key_value[0])
-                            let rawValue = String(key_value[1])
-                            let decoded = rawValue.removingPercentEncoding ?? rawValue
+                            // split() omits empty subsequences, so a valueless field
+                            // ("RelayState=") yields a 1-element array. Indexing [1]
+                            // blindly would trap and take the appex down mid-login.
+                            let rawValue = key_value.count > 1 ? String(key_value[1]) : ""
+                            // TO REVERT: delete the two lines below and uncomment this one.
+                            // let decoded = rawValue.removingPercentEncoding ?? rawValue
+                            //
+                            // x-www-form-urlencoded encodes space as "+" and a literal plus as
+                            // "%2B". The line above never undid the "+", so a value containing a
+                            // space came back with a literal "+" in it. Order matters: undo "+"
+                            // BEFORE percent-decoding, or "%2B" turns into "+" and then gets
+                            // wrongly eaten as a space. Note the ?? fallback is "unplussed", not
+                            // "rawValue" - falling back to rawValue would silently drop step one.
+                            //
+                            // This is a no-op for any value with no literal "+" in it, which is
+                            // why the old line was fine in nine months of production: SAMLResponse
+                            // is base64 and WebKit escapes its "+" as "%2B", and RelayState is
+                            // normally an opaque token with no spaces. Only a value that really
+                            // does contain a space behaves differently now.
+                            let unplussed = rawValue.replacingOccurrences(of: "+", with: " ")
+                            let decoded = unplussed.removingPercentEncoding ?? unplussed
                             let escaped = htmlEscape(decoded)
                             let line = "<input type=\"hidden\" name=\"\(paramName)\" value=\"\(escaped)\">"
                             html += line
@@ -562,29 +520,78 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             
      
             
+            // response_mode=form_post detection.
+            //
+            // With the default response_mode=query the IdP 302s to redirect_uri with ?code=...,
+            // so echoing that URL back to the browser as a Location header is enough (sendRedirect
+            // below). That is the path every OIDC client we had seen until now takes.
+            //
+            // With response_mode=form_post the IdP instead returns a 200 HTML page holding an
+            // auto-submitting form whose hidden inputs carry code/state/session_state. The form
+            // action is the bare redirect_uri with NO query string, and this navigation is a POST.
+            // Echoing that URL back as a 302 turns it into a parameterless GET and silently drops
+            // the authorization code, so the relying party blows up (ASP.NET Core reports
+            // "Correlation failed" / no code). Hit by dialog.uio.no, whose BFF federates through
+            // Acos IdentityServer, which requests response_mode=form_post from Keycloak.
+            let isFormPost = navigationAction.request.httpMethod?.uppercased() == "POST"
+            logger.debug("webloginlog: Callback navigation method: \(navigationAction.request.httpMethod ?? "nil"), form_post: \(isFormPost)")
+
             // Extract cookies
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-               
+
+                let cookieHeader = self.combineCookies(cookies: cookies)
+
+                // Unchanged original behaviour: tell the browser to follow the callback URL itself.
+                let sendRedirect = {
                     let headers: [String:String]  = [
                         "Location": webViewURL.absoluteString,
-                        "Set-Cookie": self.combineCookies(cookies: cookies)
+                        "Set-Cookie": cookieHeader
                     ]
-                
-                 
-                
-                
+
                     if let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil, headerFields: headers) {
-                        
+
                         logger.debug("webloginlog: Sending redirect response to browser from intercepted url.")
                         webView.configuration.userContentController.removeAllScriptMessageHandlers()
                         self.authorizationRequest?.complete(httpResponse: response, httpBody: nil)
-                        return
-                        
+
                     } else {
                         logger.error("webloginlog: Failed to construct HTTPURLResponse for oidc.")
                     }
-                
-                
+                }
+
+                guard isFormPost else {
+                    sendRedirect()
+                    return
+                }
+
+                // Hand the browser the IdP's own auto-submitting form page verbatim, so Safari
+                // performs the POST itself - in its own cookie jar, with the body intact.
+                //
+                // We read the page out of the DOM rather than navigationAction.request.httpBody
+                // because WKWebView does not expose the body of a form submission to the
+                // navigation delegate (it is nil there). Cancelling the navigation above leaves
+                // the IdP's form page as the current document, so outerHTML is exactly it.
+                webView.evaluateJavaScript("document.documentElement.outerHTML") { result, error in
+                    guard let html = result as? String, let body = html.data(using: .utf8) else {
+                        logger.error("webloginlog: form_post: could not read the IdP form from the DOM: \(String(describing: error)). Falling back to a redirect, which will drop the code.")
+                        sendRedirect()
+                        return
+                    }
+
+                    let headers: [String:String] = [
+                        "Content-Type": "text/html; charset=utf-8",
+                        "Set-Cookie": cookieHeader
+                    ]
+
+                    if let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers) {
+                        logger.debug("webloginlog: form_post: returning the IdP auto-post form to the browser so it submits the code itself.")
+                        webView.configuration.userContentController.removeAllScriptMessageHandlers()
+                        self.authorizationRequest?.complete(httpResponse: response, httpBody: body)
+                    } else {
+                        logger.error("webloginlog: Failed to construct HTTPURLResponse for the form_post page.")
+                        sendRedirect()
+                    }
+                }
             }
 
             return
@@ -751,9 +758,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     self.view.isHidden = false
                     self.view.layoutSubtreeIfNeeded()
                     //      }
-                    
-                    
-                    
+
+
+
                     logger.log("webloginlog: Detected interactive login on first response. Showing UI immediately.")
                 } else {
                     showWindowIfDelay()
@@ -1771,9 +1778,17 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 }
 
             }.resume()
-        
+
     }
-    
+
+}
+
+/// The login window is shown while another process (AppSSOAgent) is frontmost,
+/// so this app is not active and its window is not key. Without this, AppKit
+/// spends the user's first click activating us instead of delivering it to the
+/// page, and every button needs to be clicked twice.
+final class FirstMouseWebView: WKWebView {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 

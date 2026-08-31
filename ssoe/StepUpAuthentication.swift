@@ -268,15 +268,15 @@ extension AuthenticationViewController: WKScriptMessageHandler {
     }
 
     // Call this helper to dump state whenever you want
+    // Called on the main thread, and logs synchronously so the state it reports
+    // is the state at the call site rather than at the end of the current turn.
     private func dumpActivationState(_ label: String) {
-        DispatchQueue.main.async {
-            let now = ISO8601DateFormatter().string(from: Date())
-            let front = NSWorkspace.shared.frontmostApplication
-            let key = NSApp.keyWindow
-            let main = NSApp.mainWindow
-            let selfWin = self.view.window
-            logger.debug("webloginlog: WL-STATE \(now) \(label): frontApp=\(front?.bundleIdentifier ?? "nil") frontName=\(front?.localizedName ?? "nil") keyWindow=\(String(describing: key)) keyIsKey=\(key?.isKeyWindow ?? false) mainWindow=\(String(describing: main)) selfWindow=\(String(describing: selfWin)) selfIsVisible=\(selfWin?.isVisible ?? false) selfIsKey=\(selfWin?.isKeyWindow ?? false)")
-        }
+        let now = ISO8601DateFormatter().string(from: Date())
+        let front = NSWorkspace.shared.frontmostApplication
+        let key = NSApp.keyWindow
+        let main = NSApp.mainWindow
+        let selfWin = self.view.window
+        logger.debug("webloginlog: WL-STATE \(now) \(label): appIsActive=\(NSApp.isActive) frontApp=\(front?.bundleIdentifier ?? "nil") frontName=\(front?.localizedName ?? "nil") keyWindow=\(String(describing: key)) keyIsKey=\(key?.isKeyWindow ?? false) mainWindow=\(String(describing: main)) selfWindow=\(String(describing: selfWin)) selfIsVisible=\(selfWin?.isVisible ?? false) selfIsKey=\(selfWin?.isKeyWindow ?? false)")
     }
 
     
