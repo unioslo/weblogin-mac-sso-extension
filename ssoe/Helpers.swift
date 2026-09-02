@@ -87,18 +87,39 @@ extension AuthenticationViewController {
         
         var newRequest = URLRequest(url: request.url)
         let httpBody = request.httpBody
-        
+
+        // Shows whether the initial SAML POST body reaches us at all, and in what
+        // field order - that is what identified the EZproxy case. Deliberately
+        // .debug, not .log: the RelayState prefix encodes the resource the user is
+        // opening, and os_log debug is never persisted to disk. privacy: .public
+        // because String interpolations are redacted by default, so without it you
+        // get a length and nothing else. Length + first 40 bytes only.
+        let bodyPrefix = String(data: httpBody.prefix(40), encoding: .utf8) ?? "<not utf8>"
+        logger.debug("webloginlog: beginAuthorization. Body length: \(httpBody.count, privacy: .public), body starts with: \(bodyPrefix, privacy: .public)")
+
         if let httpBodyString = String(data: httpBody, encoding: .utf8)  {
           
             
-            if httpBodyString.starts(with: "SAMLRequest"){
+            // The starts(with:) test alone assumed the SP puts SAMLRequest first
+            // in the form. EZproxy puts RelayState first, so the AuthnRequest was
+            // missed, postSaml stayed false, and the /protocol/saml guard below
+            // silently declined the whole login. Field order in an
+            // x-www-form-urlencoded body is arbitrary, so also match SAMLRequest
+            // in any later position.
+            //
+            // "&SAMLRequest=" rather than a bare "SAMLRequest" so we match a field
+            // NAME, not a value: a literal "&" cannot occur inside a form-encoded
+            // value (it must be %26), so the ampersand anchors the match to a
+            // field boundary and a RelayState that happens to contain the text
+            // "SAMLRequest" cannot trigger it.
+            if httpBodyString.starts(with: "SAMLRequest") || httpBodyString.contains("&SAMLRequest=") {
                
                 
                 self.kCallbackURLString = referer
                 self.postSaml = true
                 self.saml = true
                 
-                logger.debug("webloginlog: beginAuthorization. This is an initial SAML POST")
+                logger.info("webloginlog: beginAuthorization. This is an initial SAML POST")
                 /*
                 Task{
                     await handleInitialSamlPost(request: request, bodyString: httpBodyString)
@@ -119,6 +140,10 @@ extension AuthenticationViewController {
         
         // return if it is a saml endpoint but not a saml request:
         if request.url.absoluteString.starts(with:"\(baseURL)/protocol/saml" ) == true && request.url.absoluteString.contains("SAMLRequest") == false && self.postSaml == false {
+            // Kept at .warning on purpose: this exit used to be silent, which made
+            // a declined request look identical to one the extension was never
+            // offered. It cost a full debugging session.
+            logger.warning("webloginlog: /protocol/saml with no SAMLRequest in the URL and postSaml == false. Not handling.")
             authorizationRequest?.doNotHandle()
             return
         }
