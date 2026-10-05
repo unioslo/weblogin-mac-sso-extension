@@ -1,6 +1,9 @@
 from __future__ import annotations
+import os
 import subprocess
+import tempfile
 import time
+import uuid
 from dataclasses import dataclass
 from shlex import quote
 
@@ -107,6 +110,32 @@ class Guest:
 
     def install_pkg(self, remote_pkg: str) -> RunResult:
         return self.run(f"sudo installer -pkg {quote(remote_pkg)} -target /", timeout=300.0)
+
+    def stub_config_path(self) -> str:
+        """Where a TESTSTUBS build looks for psso-test-stub.json: the app group
+        container, as a path relative to the login user's home (it contains a space)."""
+        return f"Library/Group Containers/{self.app_group}/psso-test-stub.json"
+
+    def write_file(self, remote_rel_path: str, content: str) -> None:
+        """Copy a text file to a path relative to the guest's home, creating parent dirs.
+
+        scp's SFTP mode does not unquote remote paths, so the file goes to a
+        space-free /tmp path first and is moved into place over ssh.
+        """
+        tmp_remote = f"/tmp/psso-guest-{uuid.uuid4().hex}.txt"
+        fd, local = tempfile.mkstemp(prefix="psso-guest-", suffix=".txt")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            self.copy_in(local, tmp_remote)
+        finally:
+            os.unlink(local)
+        target = f'"$HOME"/{quote(remote_rel_path)}'
+        parent = f'"$HOME"/{quote(os.path.dirname(remote_rel_path))}'
+        for cmd in (f"mkdir -p {parent}", f"mv {quote(tmp_remote)} {target}"):
+            res = self.run(cmd)
+            if res.returncode != 0:
+                raise RuntimeError(f"guest command failed ({res.returncode}): {cmd}: {res.stderr.strip()}")
 
     def platform_state(self) -> str:
         """`app-sso platform -s` — device/user registration + broker state."""

@@ -52,6 +52,31 @@ class IdpControl:
         )
         r.raise_for_status()
 
+    def register_device(self, public_key_x962_b64: str) -> str:
+        r = requests.post(
+            f"{self.base_url}/control/device",
+            json={"public_key_x962_base64": public_key_x962_b64},
+            verify=self._verify,
+            timeout=self._timeout,
+        )
+        r.raise_for_status()
+        return r.json()["kid"]
+
+    def mint_id_token(self, username: str = "testuser") -> str:
+        r = requests.post(
+            f"{self.base_url}/control/mint",
+            json={"username": username},
+            verify=self._verify,
+            timeout=self._timeout,
+        )
+        r.raise_for_status()
+        return r.json()["id_token"]
+
+    def auth_results(self) -> list[dict[str, Any]]:
+        r = requests.get(f"{self.base_url}/control/auth_results", verify=self._verify, timeout=self._timeout)
+        r.raise_for_status()
+        return r.json()
+
     def request_log(self) -> RequestLog:
         r = requests.get(f"{self.base_url}/control/requests", verify=self._verify, timeout=self._timeout)
         r.raise_for_status()

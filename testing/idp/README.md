@@ -15,6 +15,9 @@ test-only and must never be trusted on a real machine.
     ./gen-test-ca.sh                 # once, creates certs/
     docker compose up -d --build     # both IdPs, bound on 0.0.0.0
 
+The harness starts and stops `mock-idp` itself (`idp_stack` fixture), so this
+is only needed for manual use.
+
 Reach them from another host (e.g. a guest VM) by mapping `idp.test` to this
 host's IP in the guest's /etc/hosts and trusting certs/ca.crt in the guest.
 
@@ -41,5 +44,5 @@ Mirrors what the extension calls (appended to the profile `BaseURL`):
 
 ## Run the unit tests
 
-    python3.12 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
+    python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
     pytest

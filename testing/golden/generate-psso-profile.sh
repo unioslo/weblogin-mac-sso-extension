@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Emit the Extensible/Platform SSO configuration profile the extension consumes.
-# The four vendor keys (ClientID/BaseURL/Issuer/Audience) sit in the SSO payload dict
-# and become readable by the extension via CFPreferencesCopyAppValue(key, EXT_BUNDLE_ID).
+# The four vendor keys (ClientID/BaseURL/Issuer/Audience) go in the SSO payload's
+# ExtensionData, which is what the extension reads (loginManager.extensionData).
+# They are also delivered as managed preferences for the extension bundle id.
 # Auth method is Password: SE-backed keys cannot provision in a VM (out of scope).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -40,15 +41,15 @@ cat > "$OUT" <<PROFILE
         <key>AuthenticationMethod</key><string>Password</string>
         <key>UseSharedDeviceKeys</key><true/>
       </dict>
-      <key>ClientID</key><string>${PSSO_CLIENT_ID}</string>
-      <key>BaseURL</key><string>${PSSO_BASE_URL}</string>
-      <key>Issuer</key><string>${PSSO_ISSUER}</string>
-      <key>Audience</key><string>${PSSO_AUDIENCE}</string>
+      <key>ExtensionData</key>
+      <dict>
+        <key>ClientID</key><string>${PSSO_CLIENT_ID}</string>
+        <key>BaseURL</key><string>${PSSO_BASE_URL}</string>
+        <key>Issuer</key><string>${PSSO_ISSUER}</string>
+        <key>Audience</key><string>${PSSO_AUDIENCE}</string>
+      </dict>
     </dict>
-    <!-- The extension reads these via CFPreferencesCopyAppValue(key, EXT_BUNDLE_ID)
-         (Helpers.swift / AuthenticationViewController.swift). Keys inside the SSO payload
-         above do NOT reach that domain, so also deliver them as forced managed preferences
-         for the bundle id — these land in /Library/Managed Preferences/<host>/<id>.plist. -->
+    <!-- Copy of the same keys as managed preferences for the bundle id. The extension reads ExtensionData. -->
     <dict>
       <key>PayloadType</key><string>com.apple.ManagedClient.preferences</string>
       <key>PayloadVersion</key><integer>1</integer>

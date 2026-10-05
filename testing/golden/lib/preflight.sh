@@ -3,7 +3,7 @@
 
 preflight() {
   local ok=1
-  command -v tart  >/dev/null || { echo "MISSING: tart (brew install cirruslabs/cli/tart)" >&2; ok=0; }
+  command -v tart  >/dev/null || { echo "MISSING: tart (brew install openai/tools/tart)" >&2; ok=0; }
   command -v docker >/dev/null || { echo "MISSING: docker" >&2; ok=0; }
   command -v sshpass >/dev/null || { echo "MISSING: sshpass (brew install sshpass)" >&2; ok=0; }
   command -v cliclick >/dev/null || echo "WARN: cliclick not on host (only needed if driving VNC from host)" >&2

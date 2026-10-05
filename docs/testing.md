@@ -20,7 +20,7 @@ the mock IdP / Keycloak stack the extension talks to.
 ## 2. Prerequisites
 
 - Apple Silicon Mac (Tart requires Virtualization.framework).
-- `tart` (`brew install cirruslabs/cli/tart`), `docker`, `sshpass`.
+- `tart` (`brew install openai/tools/tart`), `docker`, `sshpass`. `brew bundle --file testing/Brewfile` installs these and the other host tools.
 - Plan 1's test CA: run `testing/idp/gen-test-ca.sh` so `testing/idp/certs/ca.crt`
   exists.
 - The **gated one-time APNs push certificate** in

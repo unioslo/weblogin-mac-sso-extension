@@ -189,7 +189,7 @@ extension AuthenticationViewController {
         
     }
     
-    func getNonceFromIdp(clientRequestId: String, loginManager: ASAuthorizationProviderExtensionLoginManager? = nil) async throws -> UUID? {
+    func getNonceFromIdp(clientRequestId: String, loginManager: (any LoginManaging)? = nil) async throws -> UUID? {
         // Use provided loginManager or fall back to self.loginManager
         guard let manager = loginManager ?? self.loginManager else {
             logger.error("webloginlog: No loginManager available for getNonceFromIdp")
@@ -217,7 +217,7 @@ extension AuthenticationViewController {
         }
     }
     
-    func signToken(token: String, tokenType: String, loginManager: ASAuthorizationProviderExtensionLoginManager, nonce: UUID, clientId: String) -> String? {
+    func signToken(token: String, tokenType: String, loginManager: any LoginManaging, nonce: UUID, clientId: String) -> String? {
         guard let signingKey = loginManager.key(for: .sharedDeviceSigning) else {
             return nil
         }
@@ -230,7 +230,7 @@ extension AuthenticationViewController {
         
         let signKeyId = computeKid(from: signingPublicKey)
         
-        guard var username = loginManager.userLoginConfiguration?.loginUserName else {
+        guard var username = loginManager.loginUserName else {
             logger.error("webloginlog: NO USERNAME SAVED!")
             return nil
         }
@@ -415,7 +415,7 @@ extension AuthenticationViewController {
     //Used for the Stepup authentication flow
     func verifyStepUpJWT(stepupToken: String,
                          localChallenge: String,
-                         loginManager: ASAuthorizationProviderExtensionLoginManager?) async -> Bool {
+                         loginManager: (any LoginManaging)?) async -> Bool {
 
         
         
@@ -431,7 +431,7 @@ extension AuthenticationViewController {
         // jwksEndpointURL is a URL, not a String: casting it to String always yields
         // nil and silently fails every verification. loginConfiguration is also only
         // populated once a registration has saved one, hence the BaseURL fallback.
-        guard let jwksURL = loginManager?.loginConfiguration?.jwksEndpointURL
+        guard let jwksURL = loginManager?.jwksEndpointURL
                 ?? URL(string: baseURL + "/protocol/openid-connect/certs") else {
             logger.error("webloginlog: step-up verify: no JWKS endpoint")
             return false

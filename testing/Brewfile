@@ -1,0 +1,13 @@
+# Host tools for the VM test suite (docs/testing.md). Install with:
+#   brew bundle --file testing/Brewfile
+
+tap "openai/tools"
+
+brew "openai/tools/tart"  # VM runtime (golden image clone/run/push)
+brew "sshpass"            # password SSH into guests (admin/admin)
+brew "python@3.14"        # harness + mock IdP (requires-python >= 3.12)
+brew "cliclick"           # optional: drive VNC from the host
+brew "gh"                 # golden.sh status: list GHCR package versions
+brew "jq"                 # golden.sh status
+
+cask "docker-desktop"     # IdP stack (testing/idp/compose.yaml)

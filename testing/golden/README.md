@@ -15,7 +15,7 @@ this pipeline, nanomdm, or APNs.
 
 ## Prerequisites
 
-- Apple Silicon Mac; `tart` (`brew install cirruslabs/cli/tart`), `docker`, `sshpass`.
+- Apple Silicon Mac; `tart` (`brew install openai/tools/tart`), `docker`, `sshpass`.
 - **Bake config:** copy `.env.example` to `.env` and override for your deployment
   (`.env.example` ships UiO's, i.e. upstream's, defaults). `.env` is gitignored —
   see [Never commit Developer ID, certificates, or secrets](../../CLAUDE.md).

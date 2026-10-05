@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pyjwt>=2.8",
     "cryptography>=42",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

@@ -11,6 +11,7 @@ import warnings
 import pytest
 import requests
 
+from harness.compose import ComposeStack, port_open
 from harness.drivers.idp import IdpControl
 from harness.drivers.guest import Guest
 from harness.drivers.ui import UI
@@ -18,7 +19,7 @@ from harness.drivers.ui import UI
 # --- Environment contract (set by test-pkg.sh; sane local defaults otherwise) ---
 HERE = os.path.dirname(os.path.abspath(__file__))
 GOLDEN_IMAGE = os.environ.get("PSSO_GOLDEN_IMAGE", "ghcr.io/unioslo/weblogin-psso-test-vm:tahoe-26")
-IDP_BASE_URL = os.environ.get("PSSO_IDP_BASE_URL", "https://idp.test:8443")
+IDP_BASE_URL = os.environ.get("PSSO_IDP_BASE_URL", "https://127.0.0.1:8443")
 IDP_CA_CERT = os.environ.get("PSSO_IDP_CA_CERT", os.path.join(HERE, "..", "idp", "certs", "ca.crt"))
 SSH_USER = os.environ.get("PSSO_SSH_USER", "admin")
 SSH_PASS = os.environ.get("PSSO_SSH_PASS", "admin")
@@ -26,6 +27,13 @@ APP_GROUP = os.environ.get("PSSO_APP_GROUP", "group.no.uio.weblogin")
 EXT_BUNDLE_ID = os.environ.get("PSSO_EXT_BUNDLE_ID", "no.uio.WebloginSSO.ssoe")
 PKG_PATH = os.environ.get("PSSO_PKG", "")
 ARTIFACTS_ROOT = os.environ.get("PSSO_ARTIFACTS", os.path.join(HERE, "artifacts"))
+IDP_DIR = os.path.join(HERE, "..", "idp")
+# Set to 1 to run against an IdP stack you started yourself (docker compose up in testing/idp).
+IDP_EXTERNAL = os.environ.get("PSSO_IDP_EXTERNAL") == "1"
+IDP_PORTS = (443, 8443)
+KEYCLOAK_PORT = 8444
+# Which IdP the golden image's profile targets; scenario rows needing the other one skip.
+PROFILE_IDP = os.environ.get("PSSO_PROFILE_IDP", "mock")
 
 
 def _needs(path_or_bin: str, kind: str) -> None:
@@ -57,15 +65,54 @@ def artifacts(artifacts_root, request) -> str:
     return d
 
 
+def _idp_ready(control: IdpControl) -> bool:
+    try:
+        control.reset()
+        return True
+    except requests.RequestException:
+        return False
+
+
+@pytest.fixture(scope="session")
+def idp_stack():
+    """Start the IdP from testing/idp/compose.yaml for the session and tear it down after.
+
+    Starts mock-idp, plus keycloak when PSSO_PROFILE_IDP=keycloak. Ensures the test
+    CA first (the golden image trusts it).
+    """
+    if IDP_EXTERNAL:
+        yield None
+        return
+    _needs("docker", "bin")
+    busy = [p for p in IDP_PORTS if port_open(p)]
+    if busy:
+        pytest.fail(
+            f"host ports {busy} already in use; stop the other IdP stack "
+            "(docker ps) or set PSSO_IDP_EXTERNAL=1 to use it"
+        )
+    ca = subprocess.run([os.path.join(IDP_DIR, "gen-test-ca.sh")], capture_output=True, text=True)
+    if ca.returncode != 0:
+        pytest.fail(f"gen-test-ca.sh failed:\n{ca.stderr}")
+    stack = ComposeStack(compose_dir=os.path.abspath(IDP_DIR))
+    control = IdpControl(base_url=IDP_BASE_URL, ca_cert=IDP_CA_CERT)
+    try:
+        stack.up("mock-idp", ready=lambda: _idp_ready(control))
+        if PROFILE_IDP == "keycloak":
+            stack.up("keycloak", ready=lambda: port_open(KEYCLOAK_PORT), timeout=180.0)
+        yield stack
+    finally:
+        stack.down()
+
+
 @pytest.fixture
-def idp() -> IdpControl:
+def idp(idp_stack) -> IdpControl:
     """Clean mock-IdP control client; resets faults + recorded requests before AND after."""
     _needs(IDP_CA_CERT, "file")
     control = IdpControl(base_url=IDP_BASE_URL, ca_cert=IDP_CA_CERT)
     try:
         control.reset()
     except requests.ConnectionError:
-        pytest.skip(f"mock IdP not reachable at {IDP_BASE_URL} (is the testing/idp stack up?)")
+        pytest.skip(f"mock IdP not reachable at {IDP_BASE_URL}")
     yield control
     control.reset()
 
@@ -128,12 +175,35 @@ def _wait_for_ip(name: str, timeout: float = 120.0) -> str:
     raise TimeoutError(f"no IP for {name} within {timeout}s")
 
 
+# AppSSO is the system side of the hand-off: Safari asks it whether a URL belongs to
+# an SSO extension. Without these lines a "the extension never ran" failure is undiagnosable.
+_SYSLOG_PREDICATE = (
+    'subsystem BEGINSWITH "com.apple.AppSSO" OR process == "AppSSOAgent" '
+    'OR eventMessage CONTAINS "webloginlog:"'
+)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, f"rep_{rep.when}", rep)
+
+
 @pytest.fixture
-def guest(vm) -> Guest:
+def guest(vm, request, artifacts) -> Guest:
     _needs("sshpass", "bin")
     g = Guest(ip=vm["ip"], user=SSH_USER, password=SSH_PASS, app_group=APP_GROUP)
     _wait_for_ssh(g)
-    return g
+    yield g
+    rep = getattr(request.node, "rep_call", None)
+    if rep is not None and rep.failed:
+        res = g.run(
+            f"sudo log show --style compact --info --debug --last 10m --predicate '{_SYSLOG_PREDICATE}'",
+            timeout=180.0,
+        )
+        with open(os.path.join(artifacts, "appsso-syslog.txt"), "w", encoding="utf-8") as fh:
+            fh.write(res.stdout)
 
 
 def _wait_for_ssh(g: Guest, timeout: float = 300.0) -> None:

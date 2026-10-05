@@ -92,3 +92,20 @@ async def test_enroll_endpoints_ok(client):
     for path in ("/psso/enroll", "/psso/userenroll"):
         r = await client.post(path, json={})
         assert r.json() == {"status": "ok"}
+
+
+def test_signer_verifies_its_own_id_token():
+    from mock_idp.signing import Signer
+    import jwt
+
+    s = Signer(issuer="https://idp.test/realms/test", audience="psso-aud")
+    tok = s.mint_id_token(sub="testuser", nonce="n", groups=[])
+    claims = s.verify_id_token(tok)
+    assert claims["sub"] == "testuser"
+    assert claims["preferred_username"] == "testuser"
+    bad = s.mint_id_token(sub="testuser", nonce="n", groups=[], malformed=True)
+    try:
+        s.verify_id_token(bad)
+        assert False, "expected failure"
+    except jwt.PyJWTError:
+        pass

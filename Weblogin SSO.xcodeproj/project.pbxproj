@@ -11,6 +11,20 @@
 		911177332ED83A2B001DC91F /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 911177312ED83A2B001DC91F /* Localizable.xcstrings */; };
 		9148E1392EA8BE79005279FD /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9148E1222EA8A225005279FD /* AuthenticationServices.framework */; };
 		9148E1442EA8BE79005279FD /* ssoe.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9148E1382EA8BE79005279FD /* ssoe.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA00000000000000000000C0 /* Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B0 /* Helpers.swift */; };
+		AA00000000000000000000C1 /* AuthenticationViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B1 /* AuthenticationViewController.swift */; };
+		AA00000000000000000000C2 /* RegistrationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B2 /* RegistrationState.swift */; };
+		AA00000000000000000000C3 /* StepUpAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B3 /* StepUpAuthentication.swift */; };
+		AA00000000000000000000C4 /* HelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B4 /* HelpersTests.swift */; };
+		AA00000000000000000000C8 /* StepUpOriginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B8 /* StepUpOriginTests.swift */; };
+		AA00000000000000000000C9 /* LoginManaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B9 /* LoginManaging.swift */; };
+		AA00000000000000000000CA /* LoginManagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000BA /* LoginManagingTests.swift */; };
+		AA00000000000000000000CD /* StepUpJWTTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000BD /* StepUpJWTTests.swift */; };
+		AA00000000000000000000CB /* TestStubLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000BB /* TestStubLoginManager.swift */; };
+		AA00000000000000000000CC /* TestStubLoginManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000BC /* TestStubLoginManagerTests.swift */; };
+		AA00000000000000000000C5 /* RegistrationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B5 /* RegistrationStateTests.swift */; };
+		AA00000000000000000000C7 /* RegistrationCompletionRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B7 /* RegistrationCompletionRegressionTests.swift */; };
+		AA00000000000000000000C6 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9148E1222EA8A225005279FD /* AuthenticationServices.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +56,20 @@
 		9148E10A2EA8A206005279FD /* Weblogin SSO.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Weblogin SSO.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9148E1222EA8A225005279FD /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		9148E1382EA8BE79005279FD /* ssoe.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ssoe.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA00000000000000000000A7 /* ssoeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ssoeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA00000000000000000000B0 /* Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Helpers.swift; path = ssoe/Helpers.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B1 /* AuthenticationViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AuthenticationViewController.swift; path = ssoe/AuthenticationViewController.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B2 /* RegistrationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegistrationState.swift; path = ssoe/RegistrationState.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B3 /* StepUpAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StepUpAuthentication.swift; path = ssoe/StepUpAuthentication.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B4 /* HelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HelpersTests.swift; path = ssoeTests/HelpersTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B8 /* StepUpOriginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StepUpOriginTests.swift; path = ssoeTests/StepUpOriginTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B9 /* LoginManaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LoginManaging.swift; path = ssoe/LoginManaging.swift; sourceTree = "<group>"; };
+		AA00000000000000000000BA /* LoginManagingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LoginManagingTests.swift; path = ssoeTests/LoginManagingTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000BD /* StepUpJWTTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StepUpJWTTests.swift; path = ssoeTests/StepUpJWTTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000BB /* TestStubLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TestStubLoginManager.swift; path = ssoe/TestStubLoginManager.swift; sourceTree = "<group>"; };
+		AA00000000000000000000BC /* TestStubLoginManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TestStubLoginManagerTests.swift; path = ssoeTests/TestStubLoginManagerTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B5 /* RegistrationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegistrationStateTests.swift; path = ssoeTests/RegistrationStateTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B7 /* RegistrationCompletionRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegistrationCompletionRegressionTests.swift; path = ssoeTests/RegistrationCompletionRegressionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -86,6 +114,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA00000000000000000000A6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA00000000000000000000C6 /* AuthenticationServices.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -95,6 +131,7 @@
 				911177312ED83A2B001DC91F /* Localizable.xcstrings */,
 				9148E10C2EA8A206005279FD /* Weblogin SSO */,
 				9148E13A2EA8BE79005279FD /* ssoe */,
+				AA00000000000000000000A8 /* ssoeTests */,
 				9148E1212EA8A225005279FD /* Frameworks */,
 				9148E10B2EA8A206005279FD /* Products */,
 			);
@@ -105,6 +142,7 @@
 			children = (
 				9148E10A2EA8A206005279FD /* Weblogin SSO.app */,
 				9148E1382EA8BE79005279FD /* ssoe.appex */,
+				AA00000000000000000000A7 /* ssoeTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -115,6 +153,26 @@
 				9148E1222EA8A225005279FD /* AuthenticationServices.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		AA00000000000000000000A8 /* ssoeTests */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000000000000000000B4 /* HelpersTests.swift */,
+				AA00000000000000000000B5 /* RegistrationStateTests.swift */,
+				AA00000000000000000000B7 /* RegistrationCompletionRegressionTests.swift */,
+				AA00000000000000000000B8 /* StepUpOriginTests.swift */,
+				AA00000000000000000000B9 /* LoginManaging.swift */,
+				AA00000000000000000000BA /* LoginManagingTests.swift */,
+				AA00000000000000000000BD /* StepUpJWTTests.swift */,
+				AA00000000000000000000BB /* TestStubLoginManager.swift */,
+				AA00000000000000000000BC /* TestStubLoginManagerTests.swift */,
+				AA00000000000000000000B0 /* Helpers.swift */,
+				AA00000000000000000000B1 /* AuthenticationViewController.swift */,
+				AA00000000000000000000B2 /* RegistrationState.swift */,
+				AA00000000000000000000B3 /* StepUpAuthentication.swift */,
+			);
+			name = ssoeTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -166,6 +224,24 @@
 			productReference = 9148E1382EA8BE79005279FD /* ssoe.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		AA00000000000000000000A1 /* ssoeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA00000000000000000000A2 /* Build configuration list for PBXNativeTarget "ssoeTests" */;
+			buildPhases = (
+				AA00000000000000000000A5 /* Sources */,
+				AA00000000000000000000A6 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ssoeTests;
+			packageProductDependencies = (
+			);
+			productName = ssoeTests;
+			productReference = AA00000000000000000000A7 /* ssoeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -180,6 +256,9 @@
 						CreatedOnToolsVersion = 16.4;
 					};
 					9148E1372EA8BE79005279FD = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					AA00000000000000000000A1 = {
 						CreatedOnToolsVersion = 16.4;
 					};
 				};
@@ -201,6 +280,7 @@
 			targets = (
 				9148E1092EA8A206005279FD /* Weblogin SSO */,
 				9148E1372EA8BE79005279FD /* ssoe */,
+				AA00000000000000000000A1 /* ssoeTests */,
 			);
 		};
 /* End PBXProject section */
@@ -236,6 +316,26 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA00000000000000000000A5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA00000000000000000000C4 /* HelpersTests.swift in Sources */,
+				AA00000000000000000000C5 /* RegistrationStateTests.swift in Sources */,
+				AA00000000000000000000C7 /* RegistrationCompletionRegressionTests.swift in Sources */,
+				AA00000000000000000000C8 /* StepUpOriginTests.swift in Sources */,
+				AA00000000000000000000C0 /* Helpers.swift in Sources */,
+				AA00000000000000000000C1 /* AuthenticationViewController.swift in Sources */,
+				AA00000000000000000000C2 /* RegistrationState.swift in Sources */,
+				AA00000000000000000000C3 /* StepUpAuthentication.swift in Sources */,
+				AA00000000000000000000C9 /* LoginManaging.swift in Sources */,
+				AA00000000000000000000CA /* LoginManagingTests.swift in Sources */,
+				AA00000000000000000000CD /* StepUpJWTTests.swift in Sources */,
+				AA00000000000000000000CB /* TestStubLoginManager.swift in Sources */,
+				AA00000000000000000000CC /* TestStubLoginManagerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -554,6 +654,40 @@
 			};
 			name = Release;
 		};
+		AA00000000000000000000A3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L6H6YNBUBK;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = no.uio.WebloginSSO.ssoeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) TESTSTUBS";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AA00000000000000000000A4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L6H6YNBUBK;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = no.uio.WebloginSSO.ssoeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) TESTSTUBS";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -580,6 +714,15 @@
 			buildConfigurations = (
 				9148E1472EA8BE79005279FD /* Debug */,
 				9148E1482EA8BE79005279FD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA00000000000000000000A2 /* Build configuration list for PBXNativeTarget "ssoeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA00000000000000000000A3 /* Debug */,
+				AA00000000000000000000A4 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

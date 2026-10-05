@@ -31,7 +31,7 @@ install_helpers() {
   # tart-guest-agent ships preinstalled on the base; reinstall only if a future base drops
   # it (third-party tap, so bypass the interactive trust gate on that fallback path).
   guest_exec "command -v tart-guest-agent >/dev/null || \
-    HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew install cirruslabs/cli/tart-guest-agent"
+    HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew install openai/tools/tart-guest-agent"
   # Never ship a golden image with the helpers missing — fail the bake instead.
   guest_exec "command -v cliclick >/dev/null && command -v tart-guest-agent >/dev/null" \
     || { echo "FATAL: helper tools missing after install (cliclick/tart-guest-agent)" >&2; return 1; }

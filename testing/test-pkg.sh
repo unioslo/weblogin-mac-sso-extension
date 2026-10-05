@@ -3,11 +3,10 @@
 #
 #   testing/test-pkg.sh path/to/WebloginSSO.pkg
 #
-# Brings up the Plan-1 IdP stack (keeping the existing test CA — the golden
-# image trusts it), then runs pytest which clones the Plan-2 golden VM per
-# scenario, installs the pkg, triggers the extension, asserts, and tears the
-# clone down. Collects report + per-run artifacts + the scenario matrix, then
-# stops the IdP stack.
+# Runs pytest, which starts the mock IdP compose stack for the session (see the
+# idp_stack fixture), clones the golden VM per scenario, installs the pkg,
+# triggers the extension, asserts, and tears everything down. Collects report,
+# per-run artifacts and the scenario matrix.
 set -euo pipefail
 
 PKG="${1:?usage: test-pkg.sh <path-to-.pkg>}"
@@ -25,15 +24,6 @@ IDP_BASE="${PSSO_IDP_BASE_URL:-https://127.0.0.1:8443}"
 for bin in tart docker sshpass; do
   command -v "$bin" >/dev/null || { echo "error: required binary '$bin' not found" >&2; exit 2; }
 done
-
-echo "==> Ensuring test CA + bringing up IdP stack (Plan 1)"
-(cd "$HERE/idp" && ./gen-test-ca.sh && docker compose up -d --build)
-
-cleanup() {
-  echo "==> Tearing down IdP stack"
-  (cd "$HERE/idp" && docker compose down) || true
-}
-trap cleanup EXIT
 
 echo "==> Ensuring golden image is present (Plan 2)"
 tart pull "$GOLDEN" || echo "   (tart pull failed; assuming local image $GOLDEN)"
@@ -53,21 +43,16 @@ PSSO_IDP_BASE_URL="$IDP_BASE" \
 PSSO_IDP_CA_CERT="$HERE/idp/certs/ca.crt" \
 PSSO_ARTIFACTS="$ARTIFACTS" \
 PSSO_MATRIX="$ARTIFACTS/scenario-matrix.md" \
-  pytest scenarios \
+  pytest -v scenarios \
     --junitxml="$ARTIFACTS/junit.xml" \
     --html="$ARTIFACTS/report.html" --self-contained-html
 RC=$?
 set -e
-
-# Copy the mock-idp request log into the artifacts dir for post-mortem.
-curl -s --cacert "$HERE/idp/certs/ca.crt" \
-  "$IDP_BASE/control/requests" > "$ARTIFACTS/mock-idp-requests.json" || true
 
 echo "==> Done. Artifacts in: $ARTIFACTS"
 echo "    - report.html          (pytest-html)"
 echo "    - junit.xml            (CI)"
 echo "    - scenario-matrix.md   (pass/fail/skip per scenario)"
 echo "    - <scenario>/webloginlog.txt, idp-requests.json, *.png (per-scenario)"
-echo "    - mock-idp-requests.json"
 [[ -f "$ARTIFACTS/scenario-matrix.md" ]] && cat "$ARTIFACTS/scenario-matrix.md"
 exit $RC

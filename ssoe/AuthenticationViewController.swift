@@ -69,7 +69,7 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
             }
         var signedTokenToSend: String?
         var baseURL = ""
-        var loginManager: ASAuthorizationProviderExtensionLoginManager?
+        var loginManager: (any LoginManaging)?
         var mdmConfig: (baseURL: String, issuer: String, clientID: String, audience: String)?
         var isRequiredAction: Bool = false
         var postSaml:Bool = false
@@ -207,7 +207,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         self.authorizationRequest = request
         self.firstResponseChecked = false
         self.showedInteractiveLogin = false
-        self.loginManager = request.loginManager
+        let loginManager = authorizationLoginManager(for: request)
+        self.loginManager = loginManager
 
         logger.log("webloginlog: Received an authentication request from: \(request.callerBundleIdentifier)")
         
@@ -253,8 +254,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
 
         let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")
         let disableSSO = sharedDefaults?.bool(forKey: "disable_sso") ?? false
-        let deviceRegistered = request.loginManager?.isDeviceRegistered ?? false && request.loginManager?.isUserRegistered ?? false
-        let userRegistered = request.loginManager?.isUserRegistered ?? false && request.loginManager?.isUserRegistered ?? false
+        let deviceRegistered = loginManager?.isDeviceRegistered ?? false
+        let userRegistered = loginManager?.isUserRegistered ?? false
         
         logger.log("webloginlog: is sso disabled? \(disableSSO)")
         logger.log("webloginlog: is device and user registered? \(userRegistered && deviceRegistered)")
@@ -308,21 +309,19 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
             return
         }
         
-        let loginManager = request.loginManager
-        self.loginManager = loginManager
-        if let loginManager {
-            updateConfiguration(loginManager: loginManager)
+        // Biometric policy lives in the real OS configuration, stub or not.
+        if let realLoginManager = request.loginManager {
+            updateConfiguration(loginManager: realLoginManager)
         }
-       
-        let tokens = loginManager?.ssoTokens
-        if let tokens = request.loginManager?.ssoTokens {
+
+        if let tokens = loginManager?.ssoTokens {
             logger.log( "webloginlog: There are SSO Tokens. Using them.")
             insertPssoTokens(request: request, tokens: tokens)
         }else {
             logger.log("webloginlog: There are no SSO Tokens. Trying to retrieve them.")
-            loginManager?.userNeedsReauthentication{ error in
+            loginManager?.userNeedsReauthentication{ [self] error in
+              Task { @MainActor in
 
-               
                 if let error {
                     logger.error("webloginlog: Error: \(error.localizedDescription)")
                     self.webView.configuration.userContentController.removeAllScriptMessageHandlers()
@@ -338,6 +337,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                     logger.log("webloginlog: Got tokens.")
                     self.insertPssoTokens(request: request, tokens: tokens)
                 }
+              }
             }
             
         }
@@ -869,7 +869,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
 
 extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistrationHandler {
     
-    func configuration(loginManager: ASAuthorizationProviderExtensionLoginManager) -> ASAuthorizationProviderExtensionLoginConfiguration {
+    func configuration(loginManager: any LoginManaging) -> ASAuthorizationProviderExtensionLoginConfiguration {
         
         logger.debug("webloginlog: getting configuration")
 

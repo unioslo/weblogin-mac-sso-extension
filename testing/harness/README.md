@@ -17,13 +17,20 @@ matrix, then tears the stack down.
 ## What it asserts
 
 The guest has no functional Secure Enclave, so SE-backed registration cannot
-complete in a VM. Scenarios assert the extension's **observable** behavior:
-`webloginlog:` log lines (`sudo log show --info --debug`) plus the **89c5a0a**
-invariant (no double-completion log signature) on every row. Per-scenario
-artifacts are collected for post-mortem: `webloginlog.txt` and the IdP-side
-request log (`idp-requests.json`, from mock-idp `GET /control/requests`). The
-drivers can additionally read guest / app-group state and take VNC screenshots
-for tighter future rows.
+complete in a VM. Two kinds of rows exist:
+
+- `scenarios/test_scenarios.py` runs a normal pkg. The extension declines the
+  request as unregistered, and rows assert `webloginlog:` lines plus the
+  **89c5a0a** invariant (no double-completion log signature).
+- `scenarios/test_step_up.py` runs a pkg from `testing/build-test-pkg.sh`,
+  compiled with `TESTSTUBS`. The harness writes `psso-test-stub.json` into the
+  guest's app group container, so the extension treats the device as
+  registered, signs with a software key the mock IdP knows, and runs the full
+  header login and step-up flow. Rows assert on the mock IdP request log and
+  auth results, not only on logs.
+
+Per-scenario artifacts are collected for post-mortem: `webloginlog.txt` and the
+IdP-side request log (`idp-requests.json`, from mock-idp `GET /control/requests`).
 
 The guaranteed guard for the throwing save-config path is the
 `ssoeTests/RegistrationCompletionRegressionTests` XCTest (run it on a machine
@@ -41,8 +48,13 @@ with full Xcode; this repo's dev hosts may carry only Command Line Tools).
   nothing, and most extension lines are info/debug level. The UI driver does
   coordinate clicks + full-frame `expect_screen` (vncdotool has no template
   search); capture reference PNGs with `screenshot()`, not external tools.
-- `conftest.py` — `vm` (clone-per-test), `guest`, `ui`, `idp`, `artifacts`
-  fixtures + the JUnit→matrix `pytest_sessionfinish` hook.
+- `conftest.py` — `idp_stack` (session), `vm` (clone-per-test), `guest`, `ui`,
+  `idp`, `artifacts` fixtures + the JUnit→matrix `pytest_sessionfinish` hook.
+  `idp_stack` starts `mock-idp` from `testing/idp/compose.yaml` (compose project
+  `psso-harness-idp`), plus `keycloak` when `PSSO_PROFILE_IDP=keycloak`, on first
+  use and removes them at session end. It fails if
+  ports 443/8443 are already taken. Set `PSSO_IDP_EXTERNAL=1` to use a stack you
+  started yourself.
 - `scenarios/test_scenarios.py` — one parametrized case per design-spec row.
   Rows declare which IdP the golden image's profile must target; mismatched
   rows skip (`PSSO_PROFILE_IDP`, default `mock` — repointing at Keycloak
@@ -54,7 +66,7 @@ with full Xcode; this repo's dev hosts may carry only Command Line Tools).
 
 ## Run just the pure unit tests (no VM needed)
 
-    python3.12 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
+    python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
     pytest tests
 
 ## Environment (set by test-pkg.sh; override as needed)
@@ -62,7 +74,7 @@ with full Xcode; this repo's dev hosts may carry only Command Line Tools).
 `PSSO_PKG`, `PSSO_GOLDEN_IMAGE`, `PSSO_IDP_BASE_URL` (host side — defaults to
 `https://127.0.0.1:8443`; the test leaf cert's SAN covers 127.0.0.1, so no
 /etc/hosts entry is needed), `PSSO_IDP_CA_CERT`, `PSSO_SSH_USER`,
-`PSSO_SSH_PASS`, `PSSO_APP_GROUP` (default `group.no.uio.weblogin`; forks
+`PSSO_SSH_PASS`, `PSSO_IDP_EXTERNAL`, `PSSO_APP_GROUP` (default `group.no.uio.weblogin`; forks
 override with their app group), `PSSO_PROFILE_IDP`,
 `PSSO_ARTIFACTS`, `PSSO_MATRIX` (+ `--junitxml` as the JUnit source of truth).
 
@@ -85,10 +97,10 @@ image and harness provide each one:
    alone provokes nothing.
 
 Without a SEP, PSSO registration is never *offered* (no REGISTER_DEVICE
-notification), so the extension takes its unregistered path: it logs
-`webloginlog: ... Won't display browser` and declines. That is the observable
-behavior scenario rows assert; token-flow assertions need registration and stay
-out of VM scope.
+notification). A normal pkg takes its unregistered path, logs
+`webloginlog: ... Won't display browser` and declines. A `TESTSTUBS` pkg with a
+stub file present passes the registration check and runs the token flow against
+the mock IdP; see `scenarios/test_step_up.py`.
 
 ## Open items
 
