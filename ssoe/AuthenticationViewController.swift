@@ -920,6 +920,18 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
 
         }
         
+        // Kerberos configuration
+        let tgtMapping = ASAuthorizationProviderExtensionKerberosMapping()
+        tgtMapping.ticketKeyPath            = "login_tgt"
+        tgtMapping.clientNameKeyName        = "clientName"
+        tgtMapping.realmKeyName             = "realm"
+        tgtMapping.serviceNameKeyName       = "serviceName"
+        tgtMapping.encryptionKeyTypeKeyName = "encryptionKeyType"
+        tgtMapping.sessionKeyKeyName        = "sessionKey"
+        tgtMapping.messageBufferKeyName     = "messageBuffer"
+
+        config.kerberosTicketMappings = [tgtMapping]
+        
         
         return config
     }
@@ -1315,6 +1327,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             
             if let policy = biometricPolicyFromExtensionData(extensionData) {
                 config.userSecureEnclaveKeyBiometricPolicy = policy
+            }
+            
+            if let useKerberos = extensionData["FetchKerberosTGT"] {
+               try config.setCustomLoginRequestBodyClaims(["fetch_kerberos_tgt": true])
             }
              
             
