@@ -947,15 +947,6 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         logger.log("webloginlog: Beginning user registration")
         // Set self.loginManager early so getNonceFromIdp can use it if needed
         self.loginManager = loginManager
-        if !options.contains(.userInteractionEnabled){
-            logger.log("webloginlog: User interaction enabled. Aborting.")
-            completion(.userInterfaceRequired)
-            return
-            
-        }
-
-        logger.debug("webloginlog: is device registered? \(loginManager.isDeviceRegistered)")
-        logger.info("webloginlog: Starting user registration")
         
         RegistrationState.shared.loginManager = loginManager
         RegistrationState.shared.registrationCompletion = completion
@@ -963,58 +954,50 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         RegistrationState.shared.registrationType = "user"
         let token = RegistrationState.shared.accessToken
         
-        if token != nil {
-            logger.log("webloginlog: user has token. Proceeding to user registration")
-            registerUser(accessToken: token!)
+        
+        
+        if !options.contains(.userInteractionEnabled) && options.contains(.setupAssistant), let silentRegistration = loginManager.extensionData["SilentUserRegistrationDuringSetupAssistant"], silentRegistration as? Bool == true, let refresh_token = loginManager.ssoTokens?["refresh_token"] as? String {
+            logger.log("webloginlog: Attempting user registration during setup assistant")
+            //persistLog("webloginlog: Attempting user registration during setup assistant")
+             self.doSilentUserRegistration(refresh_token: refresh_token, loginManager: loginManager)
             
-        }else {
-            
-            /*
+             //return
              
-             Old webview code
+         } else if !options.contains(.userInteractionEnabled){
+            logger.log("webloginlog: User interaction enabled. Aborting.")
+            RegistrationState.shared.isRegistrationInProgress = false
+            completion(.userInterfaceRequired)
+            return
+            
+         } else {
              
-            self.isDeviceRegistrationFlow = true
-            self.isMainViewHidden = false
-            if let win = self.view.window {
-                win.makeKeyAndOrderFront(nil)
-                // set desired content size if needed
-                win.setContentSize(NSMakeSize(700, 560))
-            }
-            
-            webView.navigationDelegate=self
-            webView.configuration.allowsInlinePredictions = true
-            self.isMainViewHidden = false
-            // Don't forget to call layoutIfNeeded() when you messing with the constraints
-            // self.cancelButton.isHidden = false
-            self.view.alphaValue = 1.0
-            self.view.window?.isOpaque = true
-            self.view.needsLayout = true
-            self.view.layoutSubtreeIfNeeded()
-            
-            // Force redraw
-            self.view.displayIfNeeded()
-             */
-            loginManager.presentRegistrationViewController{
-                error in
-                if let error = error {
-                    logger.error("webloginlog: \(error)")
-                    RegistrationState.shared.isRegistrationInProgress = false
-                    completion(.failed)
-                    return
-
-                }
-
-                
-               if options.contains(.setupAssistant), let silentRegistration = loginManager.extensionData["SilentUserRegistrationDuringSetupAssistant"], silentRegistration as! Bool, let refresh_token = loginManager.ssoTokens?["refresh_token"] as? String {
-                    
-                    self.doSilentUserRegistration(refresh_token: refresh_token, loginManager: loginManager)
-                    
-                    
-                }else {
-                    self.idpLogin(isSetupAssistant: options.contains(.setupAssistant),loginManager: loginManager)
-                }
-            }
-        }
+             logger.debug("webloginlog: is device registered? \(loginManager.isDeviceRegistered)")
+             logger.info("webloginlog: Starting user registration")
+             
+             
+             
+             if token != nil {
+                 logger.log("webloginlog: user has token. Proceeding to user registration")
+                 registerUser(accessToken: token!)
+                 
+             }else {
+                 
+                 
+                 loginManager.presentRegistrationViewController{
+                     error in
+                     if let error = error {
+                         logger.error("webloginlog: \(error)")
+                         RegistrationState.shared.isRegistrationInProgress = false
+                         completion(.failed)
+                         return
+                         
+                     }
+                     
+                     self.idpLogin(isSetupAssistant: options.contains(.setupAssistant),loginManager: loginManager)
+                     
+                 }
+             }
+         }
         
     }
     
@@ -1033,30 +1016,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         RegistrationState.shared.isRegistrationInProgress = true
         RegistrationState.shared.registrationType = "device"
         self.isDeviceRegistrationFlow = true
-        /*
-         Old webview
-         
-        self.isMainViewHidden = false
-        if let win = self.view.window {
-            win.makeKeyAndOrderFront(nil)
-            // set desired content size if needed
-            win.setContentSize(NSMakeSize(700, 560))
-        }
-        
-   
-       // webView.navigationDelegate=self
-       // webView.configuration.allowsInlinePredictions = true
-        self.isMainViewHidden = false
-        // Don't forget to call layoutIfNeeded() when you messing with the constraints
-        // self.cancelButton.isHidden = false
-        self.view.alphaValue = 1.0
-        self.view.window?.isOpaque = true
-        self.view.needsLayout = true
-        self.view.layoutSubtreeIfNeeded()
-        
-        // Force redraw
-        self.view.displayIfNeeded()
-         */
+       
         
         if loginManager.registrationToken == nil {
             logger.log("Device registration started using User Login.")
@@ -1325,9 +1285,11 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
 
             let extensionData = loginManager.extensionData
             
+            
             if let policy = biometricPolicyFromExtensionData(extensionData) {
                 config.userSecureEnclaveKeyBiometricPolicy = policy
             }
+             
             
             if let useKerberos = extensionData["FetchKerberosTGT"] {
                try config.setCustomLoginRequestBodyClaims(["fetch_kerberos_tgt": true])
@@ -1448,11 +1410,15 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     func registerUser(accessToken: String){
         guard let loginManager = RegistrationState.shared.loginManager, let completion = RegistrationState.shared.registrationCompletion else {
             logger.error("webloginlog: No Login Manager or Registration Completion")
+            //self.persistLog("webloginlog: No login manager or registration completion on registerUser. ")
+
             RegistrationState.shared.isRegistrationInProgress = false
 
             return }
 
         logger.log("webloginlog: Begin User registration")
+        //self.persistLog("webloginlog: beginUserRegistration is running")
+
 
         // Load ExtensionData to get baseURL
         let extensionData = loginManager.extensionData
@@ -1486,8 +1452,11 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         }catch{
             
             logger.error("webloginlog: Failed to save the configuration \(error).")
+           // self.persistLog("webloginlog: Failed to save user login configuration. \(error). ")
+
             RegistrationState.shared.isRegistrationInProgress = false
             completion(.failed)
+            return
         }
         
         if loginManager.authenticationMethod == .password {
@@ -1515,6 +1484,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         }
         logger.log("webloginlog: The registration method is Secure Enclave.")
 
+        //self.persistLog("webloginlog: The registration method is Secure Enclave")
+
         
         loginManager.resetUserSecureEnclaveKey()
         guard let userKey = loginManager.key(for: .userSecureEnclaveKey) else {
@@ -1527,7 +1498,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
 
         guard let userPublicKey = SecKeyCopyPublicKey(userKey) else {
                 logger.error("webloginlog: Can't export the public key for the user.")
-            RegistrationState.shared.isRegistrationInProgress = false
+                RegistrationState.shared.isRegistrationInProgress = false
 
                 completion(.failed)
                 return
@@ -1546,18 +1517,24 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
         var nonce = nil as UUID?
         let clientRequestId = UUID().uuidString
-        Task {
+        Task { @MainActor in
             do {
                 let nonceValue = try await getNonceFromIdp(clientRequestId: clientRequestId, loginManager: loginManager)
                 logger.debug("webloginlog; Got nonce: \(nonceValue!.uuidString)")
                 nonce = nonceValue
+                //self.persistLog("webloginlog: Nonce obtained.")
+
             } catch {
                 logger.debug("webloginlog: Error fetching nonce: \(error)")
+                //self.persistLog("webloginlog: Error fetching nonce: \(error)")
+
                 RegistrationState.shared.isRegistrationInProgress = false
 
                 completion(.failed)
                 return
             }
+            
+            //persistLog("The nonce is \(nonce!.uuidString)")
             
             let nonceData = nonce!.uuidString.lowercased().data(using: .utf8)!
             let nonceHash = SHA256.hash(data: nonceData)
@@ -1566,21 +1543,28 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             
             let keyType = loginManager.authenticationMethod == .password ? ASAuthorizationProviderExtensionKeyType.userDeviceSigning : ASAuthorizationProviderExtensionKeyType.userSecureEnclaveKey
             
-            
+            //persistLog("Will attempt to get an attestation key")
             let attestCertificate = try await loginManager.attestKey(ofType: keyType,  clientDataHash: nonceHashData)
-            
+            //persistLog("An attestation key was obtained.")
             let attestationB64 = attestCertificate.compactMap { cert -> String? in
-                guard let data = SecCertificateCopyData(cert) as Data? else { return nil }
+                guard let data = SecCertificateCopyData(cert) as Data? else {
+                    //self.persistLog("webloginlog: Error obtaining attestation data")
+                    completion(.failed)
+                    return nil }
                 return data.base64EncodedString(options: [])
             }
 
+            //persistLog("Attestation data was obtained.")
             logger.debug("webloginlog: user attestation: \(attestationB64)")
 
             // POST to your registration endpoint
             guard let url = URL(string: baseURLString+"/psso/userenroll" ) else {
+                //self.persistLog("webloginlog: Error creating URL")
+
                 completion(.failed)
                 return
             }
+
             
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -1615,6 +1599,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                     let code = responseHTTP?.statusCode ?? 0
                     logger.error("webloginlog: Error was \(code)")
                     logger.error("webloginlog: User Registration failed: \(error?.localizedDescription ?? "unknown")")
+                    //self.persistLog("webloginlog: Problem with user registration: \(error?.localizedDescription ?? "unknown")")
+
                     completion(.failed)
                     RegistrationState.shared.clear()
                     RegistrationState.shared.isRegistrationInProgress = false
@@ -1727,12 +1713,18 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     }
     
     func doSilentUserRegistration(refresh_token: String, loginManager: ASAuthorizationProviderExtensionLoginManager){
-        
+       // persistLog("webloginlog: Silent user registration started")
+
         let base_url = loginManager.extensionData["BaseURL"] as? String ?? "fallback-baseURL"
         let clientID  = loginManager.extensionData["ClientID"] as? String ?? "psso"
         
         let url = URL(string: "\(base_url)/protocol/openid-connect/token")!
         
+        let fail = {
+            RegistrationState.shared.isRegistrationInProgress = false
+            RegistrationState.shared.registrationCompletion?(.userInterfaceRequired)
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -1753,18 +1745,25 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
 
                 if let error = error {
                     logger.error("webloginlog: Error on HTTP request for access token: \(error.localizedDescription).")
-                    self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    //self.persistLog("webloginlog: Error on HTTP request for access token.\(error.localizedDescription) ")
+
+                    //self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    fail()
                     return
                 }
 
                 guard let httpResponse = response as? HTTPURLResponse else {
                    logger.error("webloginlog: Response was not successfull.")
-                   self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    //self.persistLog("webloginlog: Response was not successfull. ")
+
+                  // self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    fail()
                    return
                }
                 guard let data = data else {
                     logger.error("webloginlog: no data returned from access token request.")
-                    self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    //self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    fail()
                     return
                 }
 
@@ -1779,18 +1778,21 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                                 
                         else {
                             logger.log("webloginlog: Token response did not contain an access_token.")
-                            self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
-                        
+                            //self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                            fail()
                             return
                         }
 
                     RegistrationState.shared.idpUsername = idpUsername
+                    //self.persistLog("webloginlog: Calling register user. ")
+
                     self.registerUser(accessToken: accessToken )
                     return
                     
                 } catch {
                     logger.error("webloginlog: Error decoding access token: \(error.localizedDescription).")
-                    self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
+                    fail()
+                    //self.idpLogin(isSetupAssistant: true, loginManager: loginManager)
                     return
 
                 }

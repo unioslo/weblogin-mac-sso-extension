@@ -759,7 +759,34 @@ extension AuthenticationViewController {
         return base64URLEncode(SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) })
     }
 
-    
+
+    func persistLog(_ message: String) {
+        let url = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("weblogin.log")
+
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+
+            let line = "\(Date()): \(message)\n"
+            let data = Data(line.utf8)
+
+            if FileManager.default.fileExists(atPath: url.path) {
+                let handle = try FileHandle(forWritingTo: url)
+                try handle.seekToEnd()
+                try handle.write(contentsOf: data)
+                try handle.synchronize()
+                try handle.close()
+            } else {
+                try data.write(to: url)
+            }
+        } catch {
+            logger.error("Failed to persist diagnostic log: \(error.localizedDescription)")
+        }
+    }
     
 }
 
